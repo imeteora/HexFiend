@@ -5,7 +5,7 @@
 //  Copyright 2008 ridiculous_fish. All rights reserved.
 //
 
-#import <Cocoa/Cocoa.h>
+NS_ASSUME_NONNULL_BEGIN
 
 @class HFByteArray, HFProgressTracker;
 
@@ -28,11 +28,11 @@ extern NSString *const HFPrivateByteArrayPboardType;
 }
 
 /* Creates an HFPasteboardOwner to own the given pasteboard with the given types.  Note that the NSPasteboard retains its owner. */
-+ (id)ownPasteboard:(NSPasteboard *)pboard forByteArray:(HFByteArray *)array withTypes:(NSArray *)types;
++ (instancetype)ownPasteboard:(NSPasteboard *)pboard forByteArray:(HFByteArray *)array withTypes:(NSArray *)types;
 - (HFByteArray *)byteArray;
 
 /* Performs a copy to pasteboard with progress reporting. This must be overridden if you support types other than the private pboard type. */
-- (void)writeDataInBackgroundToPasteboard:(NSPasteboard *)pboard ofLength:(unsigned long long)length forType:(NSString *)type trackingProgress:(HFProgressTracker *)tracker;
+- (void)writeDataInBackgroundToPasteboard:(NSPasteboard *)pboard ofLength:(unsigned long long)length forType:(NSString *)type trackingProgress:(nullable HFProgressTracker *)tracker;
 
 /* NSPasteboard delegate methods, declared here to indicate that subclasses should call super */
 - (void)pasteboard:(NSPasteboard *)sender provideDataForType:(NSString *)type;
@@ -45,7 +45,7 @@ extern NSString *const HFPrivateByteArrayPboardType;
 + (NSString *)uuid;
 
 /* Unpacks a byte array from a pasteboard, preferring HFPrivateByteArrayPboardType */
-+ (HFByteArray *)unpackByteArrayFromPasteboard:(NSPasteboard *)pasteboard;
++ (nullable HFByteArray *)unpackByteArrayFromPasteboard:(NSPasteboard *)pasteboard;
 
 /* Used to handle the case where copying data will require a lot of memory and give the user a chance to confirm. */
 - (unsigned long long)amountToCopyForDataLength:(unsigned long long)numBytes stringLength:(unsigned long long)stringLength;
@@ -54,3 +54,5 @@ extern NSString *const HFPrivateByteArrayPboardType;
 - (unsigned long long)stringLengthForDataLength:(unsigned long long)dataLength;
 
 @end
+
+NS_ASSUME_NONNULL_END

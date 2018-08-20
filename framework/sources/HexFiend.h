@@ -20,6 +20,7 @@
 */
 
 
+#import <TargetConditionals.h>
 #import <HexFiend/HFTypes.h>
 #import <HexFiend/HFFunctions.h>
 #import <HexFiend/HFController.h>
@@ -27,11 +28,15 @@
 #import <HexFiend/HFFullMemoryByteArray.h>
 #import <HexFiend/HFFullMemoryByteSlice.h>
 #import <HexFiend/HFHexTextRepresenter.h>
+#if !TARGET_OS_IPHONE
 #import <HexFiend/HFLineCountingRepresenter.h>
 #import <HexFiend/HFStatusBarRepresenter.h>
 #import <HexFiend/HFLayoutRepresenter.h>
+#endif
 #import <HexFiend/HFStringEncodingTextRepresenter.h>
+#if !TARGET_OS_IPHONE
 #import <HexFiend/HFVerticalScrollerRepresenter.h>
+#endif
 #import <HexFiend/HFByteArray.h>
 #import <HexFiend/HFFileByteSlice.h>
 #import <HexFiend/HFFileReference.h>
@@ -39,11 +44,14 @@
 #import <HexFiend/HFBTreeByteArray.h>
 #import <HexFiend/HFAttributedByteArray.h>
 #import <HexFiend/HFProgressTracker.h>
+#if !TARGET_OS_IPHONE
 #import <HexFiend/HFTextField.h>
 #import <HexFiend/HFTextView.h>
+#endif
 #import <HexFiend/HFSharedMemoryByteSlice.h>
 #import <HexFiend/HFByteRangeAttribute.h>
 #import <HexFiend/HFByteRangeAttributeArray.h>
+#import <HexFiend/HFNSStringEncoding.h>
 
 
 /* The following is all for Doxygen */

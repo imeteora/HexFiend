@@ -6,21 +6,18 @@
 //
 
 #import <HexFiend/HFController.h>
-#import <HexFiend/HFRepresenter_Internal.h>
-#import <HexFiend/HFByteArray_Internal.h>
+#import "HFRepresenter_Internal.h"
+#import "HFByteArray_Internal.h"
 #import <HexFiend/HFFullMemoryByteArray.h>
 #import <HexFiend/HFBTreeByteArray.h>
 #import <HexFiend/HFAttributedByteArray.h>
 #import <HexFiend/HFByteRangeAttribute.h>
 #import <HexFiend/HFFullMemoryByteSlice.h>
-#import <HexFiend/HFControllerCoalescedUndo.h>
+#import "HFControllerCoalescedUndo.h"
 #import <HexFiend/HFSharedMemoryByteSlice.h>
-#import <HexFiend/HFRandomDataByteSlice.h>
+#import "HFRandomDataByteSlice.h"
 #import <HexFiend/HFFileReference.h>
 #import <HexFiend/HFByteRangeAttributeArray.h>
-#import <objc/runtime.h>
-#import <objc/message.h>
-#import <objc/objc-auto.h>
 
 /* Used for the anchor range and location */
 #define NO_SELECTION ULLONG_MAX
@@ -70,12 +67,6 @@ typedef NS_ENUM(NSInteger, HFControllerSelectAction) {
 - (void)_updateDisplayedRange;
 @end
 
-@interface NSEvent (HFLionStuff)
-- (CGFloat)scrollingDeltaY;
-- (BOOL)hasPreciseScrollingDeltas;
-- (CGFloat)deviceDeltaY;
-@end
-
 static inline Class preferredByteArrayClass(void) {
     return [HFAttributedByteArray class];
 }
@@ -88,6 +79,7 @@ static inline Class preferredByteArrayClass(void) {
     [byteArray addObserver:self forKeyPath:@"changesAreLocked" options:0 context:KVOContextChangesAreLocked];
     selectionAnchor = NO_SELECTION;
     undoOperations = [[NSMutableSet alloc] init];
+    _colorRanges = [NSMutableArray array];
 }
 
 - (instancetype)init {
@@ -101,7 +93,11 @@ static inline Class preferredByteArrayClass(void) {
     _hfflags.hideNullBytes = NO;
     _hfflags.selectable = YES;
     representers = [[NSMutableArray alloc] init];
+#if TARGET_OS_IPHONE
+    [self setFont:[UIFont monospacedDigitSystemFontOfSize:HFDEFAULT_FONTSIZE weight:UIFontWeightRegular]];
+#else
     [self setFont:[NSFont fontWithName:HFDEFAULT_FONT size:HFDEFAULT_FONTSIZE]];
+#endif
     return self;
 }
 
@@ -289,14 +285,23 @@ static inline Class preferredByteArrayClass(void) {
     return lineHeight;
 }
 
-- (void)setFont:(NSFont *)val {
+#if TARGET_OS_IPHONE
+- (void)setFont:(UIFont *)val
+#else
+- (void)setFont:(NSFont *)val
+#endif
+{
     if (val != _font) {
         CGFloat priorLineHeight = [self lineHeight];
         
         _font = [val copy];
         
         NSLayoutManager *manager = [[NSLayoutManager alloc] init];
+#if TARGET_OS_IPHONE
+        lineHeight = val.lineHeight;
+#else
         lineHeight = [manager defaultLineHeightForFont:_font];
+#endif
         
         HFControllerPropertyBits bits = HFControllerFont;
         if (lineHeight != priorLineHeight) bits |= HFControllerLineHeight;
@@ -555,7 +560,7 @@ static inline Class preferredByteArrayClass(void) {
         HFRange existingRange = [self rangeForBookmark:bookmark];
         NSUndoManager *undoer = [self undoManager];
         [[undoer prepareWithInvocationTarget:self] setRange:existingRange forBookmark:bookmark];
-        [undoer setActionName:@"Bookmark"];
+        [undoer setActionName:NSLocalizedString(@"Bookmark", "")];
         
         NSString *attribute = HFBookmarkAttributeFromBookmark(bookmark);
         [attributeArray removeAttribute:attribute];
@@ -590,12 +595,11 @@ static inline Class preferredByteArrayClass(void) {
     NSUInteger maxBytesForViewSize = NSUIntegerMax;
     double maxLines = DBL_MAX;
     for(HFRepresenter* rep in representers) {
-        NSView *view = [rep view];
-        double repMaxLines = [rep maximumAvailableLinesForViewHeight:NSHeight([view frame])];
+        double repMaxLines = [rep maximumAvailableLinesForViewHeight:[rep.view frame].size.height];
         if (repMaxLines != DBL_MAX) {
             /* bytesPerLine may be ULONG_MAX.  We want to compute the smaller of maxBytesForViewSize and ceil(repMaxLines) * bytesPerLine.  If the latter expression overflows, the smaller is the former. */
             NSUInteger repMaxLinesUInt = (NSUInteger)ceil(repMaxLines);
-            NSUInteger maxLinesTimesBytesPerLine =  repMaxLinesUInt * bytesPerLine;
+            NSUInteger maxLinesTimesBytesPerLine = repMaxLinesUInt * bytesPerLine;
             /* Check if we overflowed */
             BOOL overflowed = (repMaxLinesUInt != 0 && (maxLinesTimesBytesPerLine / repMaxLinesUInt != bytesPerLine));
             if (! overflowed) {
@@ -850,8 +854,7 @@ static inline Class preferredByteArrayClass(void) {
 - (void)_updateBytesPerLine {
     NSUInteger newBytesPerLine = NSUIntegerMax;
     for(HFRepresenter* rep in representers) {
-        NSView *view = [rep view];
-        CGFloat width = [view frame].size.width;
+        CGFloat width = [rep.view frame].size.width;
         NSUInteger repMaxBytesPerLine = [rep maximumBytesPerLineForViewWidth:width];
         HFASSERT(repMaxBytesPerLine > 0);
         newBytesPerLine = MIN(repMaxBytesPerLine, newBytesPerLine);
@@ -969,6 +972,7 @@ static inline Class preferredByteArrayClass(void) {
     return resultRange;
 }
 
+#if !TARGET_OS_IPHONE
 - (void)beginSelectionWithEvent:(NSEvent *)event forByteIndex:(unsigned long long)characterIndex {
     USE(event);
     HFASSERT(characterIndex <= [self contentsLength]);
@@ -1113,6 +1117,7 @@ static inline Class preferredByteArrayClass(void) {
     _hfflags.commandExtendSelection = NO;
     selectionAnchor = NO_SELECTION;
 }
+#endif
 
 - (double)selectionPulseAmount {
     double result = 0;
@@ -1156,6 +1161,7 @@ static inline Class preferredByteArrayClass(void) {
     [self setDisplayedLineRange:lineRange];
 }
 
+#if !TARGET_OS_IPHONE
 - (void)scrollWithScrollEvent:(NSEvent *)scrollEvent {
     HFASSERT(scrollEvent != NULL);
     HFASSERT([scrollEvent type] == NSScrollWheel);
@@ -1163,20 +1169,10 @@ static inline Class preferredByteArrayClass(void) {
     BOOL hasPreciseScroll;
     
     /* Prefer precise deltas */
-    if ([scrollEvent respondsToSelector:@selector(hasPreciseScrollingDeltas)]) {
-        hasPreciseScroll = [scrollEvent hasPreciseScrollingDeltas];
-        if (hasPreciseScroll) {
-            /* In this case, we're going to scroll by a certain number of points */
-            preciseScroll = [scrollEvent scrollingDeltaY];
-        }
-    } else if ([scrollEvent respondsToSelector:@selector(deviceDeltaY)]) {
-        /* Legacy (SnowLeopard) support */
-        hasPreciseScroll = ([scrollEvent subtype] == 1);
-        if (hasPreciseScroll) {
-            preciseScroll = [scrollEvent deviceDeltaY];
-        }
-    } else {
-        hasPreciseScroll = NO;
+    hasPreciseScroll = [scrollEvent hasPreciseScrollingDeltas];
+    if (hasPreciseScroll) {
+        /* In this case, we're going to scroll by a certain number of points */
+        preciseScroll = [scrollEvent scrollingDeltaY];
     }
     
     long double scrollY = 0;
@@ -1187,6 +1183,7 @@ static inline Class preferredByteArrayClass(void) {
     }
     [self scrollByLines:scrollY];
 }
+#endif
 
 - (void)setSelectedContentsRanges:(NSArray *)selectedRanges {
     REQUIRE_NOT_NULL(selectedRanges);
@@ -1474,7 +1471,7 @@ static BOOL rangesAreInAscendingOrder(NSEnumerator *rangeEnumerator) {
         END_TRANSACTION();
     }
     else {
-        NSBeep();
+        NSLog(@"Nothing was deleted");
     }
 }
 
@@ -1757,7 +1754,7 @@ static BOOL rangesAreInAscendingOrder(NSEnumerator *rangeEnumerator) {
 
 - (void)deleteSelection {
     if ([self editMode] == HFOverwriteMode || ! [self editable]) {
-        NSBeep();
+        NSLog(@"Wrong edit mode or not editable");
     }
     else {
         [self _commandDeleteRanges:[HFRangeWrapper organizeAndMergeRanges:selectedContentsRanges]];
@@ -1770,7 +1767,7 @@ static BOOL rangesAreInAscendingOrder(NSEnumerator *rangeEnumerator) {
     EXPECT_CLASS(newArray, HFByteArray);
     HFRange entireRange = HFRangeMake(0, [self contentsLength]);
     if ([self editMode] == HFOverwriteMode && [newArray length] != entireRange.length) {
-        NSBeep();
+        NSLog(@"Invalid length for overwrite mode");
     }
     else {
         [self _commandInsertByteArrays:@[newArray] inRanges:[HFRangeWrapper withRanges:&entireRange count:1] withSelectionAction:ePreserveSelection];
@@ -1883,8 +1880,7 @@ static BOOL rangesAreInAscendingOrder(NSEnumerator *rangeEnumerator) {
     HFASSERT(proposedRangeToOverwrite.location >= previousBytes);
     proposedRangeToOverwrite.location -= previousBytes;
     if (! HFRangeIsSubrangeOfRange(proposedRangeToOverwrite, HFRangeMake(0, byteArrayLength))) {
-        /* The user tried to overwrite past the end */
-        NSBeep();
+        NSLog(@"The user tried to overwrite past the end");
         return NO;
     }
     
@@ -1944,7 +1940,7 @@ static BOOL rangesAreInAscendingOrder(NSEnumerator *rangeEnumerator) {
 - (void)deleteDirection:(HFControllerMovementDirection)direction {
     HFASSERT(direction == HFControllerDirectionLeft || direction == HFControllerDirectionRight);
     if ([self editMode] != HFInsertMode || ! [self editable]) {
-        NSBeep();
+        NSLog(@"Wrong edit mode or not editable");
         return;
     }
     unsigned long long minSelection = [self _minimumSelectionLocation];
@@ -2021,6 +2017,15 @@ static BOOL rangesAreInAscendingOrder(NSEnumerator *rangeEnumerator) {
     }
     if (! success) [self _removeAllUndoOperations];
     return success;
+}
+
+- (void)setColorRanges:(NSMutableArray<HFColorRange *> *)colorRanges {
+    _colorRanges = colorRanges;
+    [self colorRangesDidChange];
+}
+
+- (void)colorRangesDidChange {
+    [self _addPropertyChangeBits:HFControllerColorRanges];
 }
 
 #if BENCHMARK_BYTEARRAYS

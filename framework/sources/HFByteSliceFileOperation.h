@@ -5,7 +5,7 @@
 //  Copyright 2008 ridiculous_fish. All rights reserved.
 //
 
-#import <Cocoa/Cocoa.h>
+NS_ASSUME_NONNULL_BEGIN
 
 @class HFByteSlice, HFFileReference, HFProgressTracker;
 
@@ -18,16 +18,18 @@ typedef NS_ENUM(NSInteger, HFByteSliceWriteError) {
     HFRange targetRange;
 }
 
-+ (id)identityOperationWithByteSlice:(HFByteSlice *)slice targetRange:(HFRange)range;
-+ (id)externalOperationWithByteSlice:(HFByteSlice *)slice targetRange:(HFRange)range;
-+ (id)internalOperationWithByteSlice:(HFByteSlice *)slice sourceRange:(HFRange)source targetRange:(HFRange)target;
++ (instancetype)identityOperationWithByteSlice:(HFByteSlice *)slice targetRange:(HFRange)range;
++ (instancetype)externalOperationWithByteSlice:(HFByteSlice *)slice targetRange:(HFRange)range;
++ (instancetype)internalOperationWithByteSlice:(HFByteSlice *)slice sourceRange:(HFRange)source targetRange:(HFRange)target;
 
-+ (id)chainedOperationWithInternalOperations:(NSArray *)internalOperations;
++ (instancetype)chainedOperationWithInternalOperations:(NSArray *)internalOperations;
 
 - (HFRange)sourceRange;
 - (HFRange)targetRange;
 
 - (unsigned long long)costToWrite;
-- (HFByteSliceWriteError)writeToFile:(HFFileReference *)file trackingProgress:(HFProgressTracker *)progressTracker error:(NSError **)error;
+- (HFByteSliceWriteError)writeToFile:(HFFileReference *)file trackingProgress:(nullable HFProgressTracker *)progressTracker error:(NSError **)error;
 
 @end
+
+NS_ASSUME_NONNULL_END

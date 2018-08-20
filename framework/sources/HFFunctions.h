@@ -3,6 +3,8 @@
 #import <HexFiend/HFTypes.h>
 #import <libkern/OSAtomic.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 #define HFDEFAULT_FONT (@"Monaco")
 #define HFDEFAULT_FONTSIZE ((CGFloat)10.)
 
@@ -437,6 +439,7 @@ static inline NSUInteger HFDivideULRoundingUp(NSUInteger a, NSUInteger b) {
     else return ((a - 1) / b) + 1;
 }
 
+#if !TARGET_OS_IPHONE
 /*! Draws a shadow. */
 void HFDrawShadow(CGContextRef context, NSRect rect, CGFloat size, NSRectEdge rectEdge, BOOL active, NSRect clip);
 
@@ -445,6 +448,7 @@ void HFRegisterViewForWindowAppearanceChanges(NSView *view, SEL notificationSEL,
 
 /*! Unregisters a view to have the given notificationSEL invoked when the window becomes or loses key.  If appToo is YES, this also unregisters with NSApplication. */
 void HFUnregisterViewForWindowAppearanceChanges(NSView *view, BOOL appToo);
+#endif
 
 /*! Returns a description of the given byte count (e.g. "24 kilobytes") */
 NSString *HFDescribeByteCount(unsigned long long count);
@@ -526,3 +530,12 @@ NSString *HFDescribeByteCount(unsigned long long count);
 - (void)assertIntegrity;
 
 @end
+
+BOOL HFDarkModeEnabled(void);
+
+CGContextRef HFGraphicsGetCurrentContext(void);
+
+HFColor* HFColorWithWhite(CGFloat white, CGFloat alpha);
+HFColor* HFColorWithRGB(CGFloat red, CGFloat green, CGFloat blue, CGFloat alpha);
+
+NS_ASSUME_NONNULL_END

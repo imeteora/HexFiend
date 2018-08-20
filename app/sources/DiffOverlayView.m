@@ -26,7 +26,7 @@
     /* Clip to the bounds of our left and right views so we don't draw into the content region below */
     [NSBezierPath clipRect:NSUnionRect(leftViewBounds, rightViewBounds)];
     
-    CGContextRef ctx = [[NSGraphicsContext currentContext] graphicsPort];
+    CGContextRef ctx = HFGraphicsGetCurrentContext();
     CGMutablePathRef path = CGPathCreateMutable();
     const CGAffineTransform transform = CGAffineTransformIdentity;
     
@@ -67,7 +67,8 @@
         /* Now go to the right */
         CGPathAddLineToPoint(path, &transform, NSMinX(rightViewBounds), NSMidY(rightRect));
         
-        x = NSMinX(rightRect), y = NSMidY(rightRect);
+        x = NSMinX(rightRect);
+        y = NSMidY(rightRect);
         CGPathAddLineToPoint(path, &transform, x, y);
         
         /* Add vertical line to end */
@@ -76,7 +77,13 @@
     }
     
     CGContextAddPath(ctx, path);
-    [[NSColor colorWithCalibratedRed:1. green:0. blue:0. alpha:.5] set];
+    NSColor *color;
+    if (@available(macOS 10.10, *)) {
+        color = [NSColor systemRedColor];
+    } else {
+        color = [NSColor redColor];
+    }
+    [[color colorWithAlphaComponent:0.5] set];
     CGContextSetBlendMode(ctx, kCGBlendModeNormal);
     CGContextSetLineWidth(ctx, 2.);
     CGContextStrokePath(ctx);

@@ -1,5 +1,5 @@
 //
-//  MyDocument.h
+//  BaseDocument.h
 //  HexFiend_2
 //
 //  Copyright 2007 ridiculous_fish. All rights reserved.
@@ -9,11 +9,12 @@
 #import "DocumentWindow.h"
 
 @class HFByteArray, HFRepresenter, HFHexTextRepresenter, HFLineCountingRepresenter, HFLayoutRepresenter, HFDocumentOperationView, DataInspectorRepresenter;
+@class HFBinaryTemplateRepresenter;
 
 extern NSString * const BaseDataDocumentDidChangeStringEncodingNotification;
 
-@interface BaseDataDocument : NSDocument <NSWindowDelegate, DragDropDelegate, NSSplitViewDelegate> {
-    IBOutlet NSSplitView *containerView;
+@interface BaseDataDocument : NSDocument <NSWindowDelegate, DragDropDelegate> {
+    IBOutlet NSView *containerView;
     HFController *controller;
     
     HFLineCountingRepresenter *lineCountingRepresenter;
@@ -24,6 +25,8 @@ extern NSString * const BaseDataDocumentDidChangeStringEncodingNotification;
     HFLayoutRepresenter *layoutRepresenter;
     DataInspectorRepresenter *dataInspectorRepresenter;
     HFStatusBarRepresenter *statusBarRepresenter;
+    HFBinaryTemplateRepresenter *binaryTemplateRepresenter;
+
     NSResponder *savedFirstResponder;
     
     HFDocumentOperationView *operationView;
@@ -36,9 +39,7 @@ extern NSString * const BaseDataDocumentDidChangeStringEncodingNotification;
     
     BOOL bannerIsShown;
     BOOL bannerGrowing;
-    BOOL willRemoveBannerIfSufficientlyShortAfterDrag;
     NSView *bannerView;
-    NSView *bannerDividerThumb;
     NSTimer *bannerResizeTimer;
     CGFloat bannerTargetHeight;
     CFAbsoluteTime bannerStartTime;
@@ -94,6 +95,7 @@ extern NSString * const BaseDataDocumentDidChangeStringEncodingNotification;
 - (IBAction)setBookmark:sender;
 - (IBAction)deleteBookmark:sender;
 
++ (HFByteArray *)byteArrayfromURL:(NSURL *)absoluteURL error:(NSError **)outError;
 - (HFByteArray *)byteArray; //accessed during diffing
 
 - (BOOL)isTransientAndCanBeReplaced; //like TextEdit
@@ -101,12 +103,12 @@ extern NSString * const BaseDataDocumentDidChangeStringEncodingNotification;
 
 - (NSArray *)copyBookmarksMenuItems;
 
-- (HFDocumentOperationView *)newOperationViewForNibName:(NSString *)name displayName:(NSString *)displayName fixedHeight:(BOOL)fixedHeight;
+- (HFDocumentOperationView *)newOperationViewForNibName:(NSString *)name displayName:(NSString *)displayName;
 - (void)prepareBannerWithView:(HFDocumentOperationView *)newSubview withTargetFirstResponder:(id)targetFirstResponder;
 - (void)hideBannerFirstThenDo:(dispatch_block_t)command;
 - (NSArray *)runningOperationViews;
 
-@property (nonatomic) NSStringEncoding stringEncoding;
+@property (nonatomic) HFStringEncoding *stringEncoding;
 - (IBAction)setStringEncodingFromMenuItem:(NSMenuItem *)item;
 
 @property (nonatomic, getter=isTransient) BOOL transient;
@@ -118,5 +120,7 @@ extern NSString * const BaseDataDocumentDidChangeStringEncodingNotification;
 
 @property (nonatomic) BOOL shouldLiveReload;
 - (IBAction)setLiveReloadFromMenuItem:sender;
+
+- (void)insertData:(NSData *)data;
 
 @end

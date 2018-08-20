@@ -2,8 +2,13 @@
 // Prefix header for all source files of the 'HexFiend_2' target in the 'HexFiend_2' project
 //
 
+#import <TargetConditionals.h>
 #ifdef __OBJC__
+#if TARGET_OS_IPHONE
+    #import <UIKit/UIKit.h>
+#else
     #import <Cocoa/Cocoa.h>
+#endif
     #import <HexFiend/HFTypes.h>
 #endif
 
@@ -56,15 +61,20 @@
 
 #define NEW_ARRAY(type, name, number) \
     type name ## static_ [256];\
-    type * name = ((number) <= 256 ? name ## static_ : check_malloc((number) * sizeof(type)))
+    bzero(name ## static_, sizeof(name ## static_));\
+    type * name = ((number) <= 256 ? name ## static_ : check_calloc((number) * sizeof(type)))
     
 #define FREE_ARRAY(name) \
     if (name != name ## static_) free(name)
 
 // See "Can I create a C array of retained pointers under ARC?"
 // https://developer.apple.com/library/content/releasenotes/ObjectiveC/RN-TransitioningToARC/Introduction/Introduction.html
+#define DEFINE_OBJ_ARRAY(type, name) \
+    __strong type * name
+#define INIT_OBJ_ARRAY(type, number) \
+    (__strong type *)check_calloc((number) * sizeof(type))
 #define NEW_OBJ_ARRAY(type, name, number) \
-    __strong type * name = (__strong type *)check_calloc((number) * sizeof(type))
+    DEFINE_OBJ_ARRAY(type, name) = INIT_OBJ_ARRAY(type, number)
 #define FREE_OBJ_ARRAY(name, number) \
     for (size_t __Free_Index = 0; __Free_Index < number; ++__Free_Index) { \
         name[__Free_Index] = nil; \
@@ -98,12 +108,4 @@
 
 #ifndef __has_feature      // Optional.
 #define __has_feature(x) 0 // Compatibility with non-clang compilers.
-#endif
-
-#ifndef NS_RETURNS_RETAINED
-#if __has_feature(attribute_ns_returns_retained)
-#define NS_RETURNS_RETAINED __attribute__((ns_returns_retained))
-#else
-#define NS_RETURNS_RETAINED
-#endif
 #endif

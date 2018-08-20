@@ -17,9 +17,6 @@
 
 #define kScrollViewExtraPadding ((CGFloat)2.)
 
-/* Declaration of SnowLeopard only property so we can build on Leopard */
-#define NSTableViewSelectionHighlightStyleNone (-1)
-
 /* The largest number of bytes that any inspector type can edit */
 #define MAX_EDITABLE_BYTE_COUNT 128
 #define INVALID_EDITING_BYTE_COUNT NSUIntegerMax
@@ -229,7 +226,13 @@ static id signedIntegerDescription(const unsigned char *bytes, NSUInteger length
         {
             FETCH(__int128_t)
             FLIP(16)
-            BOOL neg = s < 0 ? (s=-s), YES : NO;
+            BOOL neg;
+            if (s < 0) {
+                s=-s;
+                neg = YES;
+            } else {
+                neg = NO;
+            }
             char buf[50], *b = buf;
             while(s) {
                 *(b++) = (char)(s%10)+'0';
@@ -399,7 +402,7 @@ static NSAttributedString *inspectionError(NSString *s) {
     
     if ([ranges count] != 1) {
         if(outIsError) *outIsError = YES;
-        return inspectionError(@"(select a contiguous range)");
+        return inspectionError(NSLocalizedString(@"(select a contiguous range)", ""));
     }
     HFRange range = [ranges[0] HFRange];
     
@@ -777,16 +780,31 @@ static BOOL stringRangeIsNullBytes(NSString *string, NSRange range) {
 @implementation DataInspectorScrollView
 
 - (void)drawDividerWithClip:(NSRect)clipRect {
-    [[NSColor lightGrayColor] set];
+    NSColor *separatorColor = [NSColor lightGrayColor];
+    if (HFDarkModeEnabled()) {
+        if (@available(macOS 10.14, *)) {
+            separatorColor = [NSColor separatorColor];
+        }
+    }
+    [separatorColor set];
     NSRect bounds = [self bounds];
     NSRect lineRect = bounds;
     lineRect.size.height = 1;
-    NSRectFill(NSIntersectionRect(lineRect, clipRect));
+    NSRectFillUsingOperation(NSIntersectionRect(lineRect, clipRect), NSCompositeSourceOver);
 }
 
 - (void)drawRect:(NSRect)rect {
-    [[NSColor colorWithCalibratedWhite:(CGFloat).91 alpha:1] set];
-    NSRectFill(rect);
+    if (!HFDarkModeEnabled()) {
+        [[NSColor colorWithCalibratedWhite:(CGFloat).91 alpha:1] set];
+        NSRectFillUsingOperation(rect, NSCompositeSourceOver);
+    }
+    
+    if (HFDarkModeEnabled()) {
+        [[NSColor colorWithCalibratedWhite:(CGFloat).09 alpha:1] set];
+    } else {
+        [[NSColor colorWithCalibratedWhite:(CGFloat).91 alpha:1] set];
+    }
+    NSRectFillUsingOperation(rect, NSCompositeSourceOver);
     [self drawDividerWithClip:rect];
 }
 
@@ -844,27 +862,13 @@ static BOOL stringRangeIsNullBytes(NSString *string, NSRange range) {
 - (NSView *)createView {
     BOOL loaded = NO;
     NSMutableArray *topLevelObjects = [NSMutableArray array];
-    if ([[NSBundle mainBundle] respondsToSelector:@selector(loadNibNamed:owner:topLevelObjects:)]) {
-        /* for Mac OS X 10.8 or higher */
-        // unlike -loadNibNamed:owner: which is deprecated in 10.8, this method does
-        // not retain top level objects automatically, so objects must be set retain
-        loaded = [[NSBundle mainBundle] loadNibNamed:@"DataInspectorView" owner:self topLevelObjects:&topLevelObjects];
-        if (! loaded || ! outletView) {
-            [NSException raise:NSInternalInconsistencyException format:@"Unable to load nib named DataInspectorView"];
-        }
-    } else {
-        /* for Mac OS X 10.7 or lower */
-        loaded = [NSBundle loadNibNamed:@"DataInspectorView" owner:self];
-        if (! loaded || ! outletView) {
-            [NSException raise:NSInternalInconsistencyException format:@"Unable to load nib named DataInspectorView"];
-        }
+    loaded = [[NSBundle mainBundle] loadNibNamed:@"DataInspectorView" owner:self topLevelObjects:&topLevelObjects];
+    if (! loaded || ! outletView) {
+        [NSException raise:NSInternalInconsistencyException format:@"Unable to load nib named DataInspectorView"];
     }
     NSView *resultView = outletView; //want to inherit its retain here
     outletView = nil;
-    if ([table respondsToSelector:@selector(setSelectionHighlightStyle:)]) {
-        [table setSelectionHighlightStyle:NSTableViewSelectionHighlightStyleNone];
-    }
-    [table setBackgroundColor:[NSColor colorWithCalibratedWhite:(CGFloat).91 alpha:1]];
+    [table setSelectionHighlightStyle:NSTableViewSelectionHighlightStyleNone];
     [table setRefusesFirstResponder:YES];
     [table setTarget:self];
     [table setDoubleAction:@selector(doubleClickedTable:)];    
@@ -1175,7 +1179,7 @@ static BOOL stringRangeIsNullBytes(NSString *string, NSRange range) {
     CGDataProviderRelease(provider);
     CGColorSpaceRelease(space);
     [[NSGraphicsContext currentContext] setCompositingOperation:NSCompositeSourceOver];
-    CGContextDrawImage([[NSGraphicsContext currentContext] graphicsPort], *(CGRect *)&bitmapRect, image);
+    CGContextDrawImage(HFGraphicsGetCurrentContext(), *(CGRect *)&bitmapRect, image);
     CGImageRelease(image);
 }
 

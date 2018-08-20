@@ -1,21 +1,20 @@
 //
-//  MyDocument.m
+//  BaseDocument.m
 //  HexFiend_2
 //
 //  Copyright 2007 ridiculous_fish. All rights reserved.
 //
 
 #import "BaseDataDocument.h"
-#import "HFBannerDividerThumb.h"
 #import "HFDocumentOperationView.h"
 #import "DataInspectorRepresenter.h"
 #import "TextDividerRepresenter.h"
+#import "HFBinaryTemplateRepresenter.h"
 #import "AppDebugging.h"
 #import "AppUtilities.h"
 #import "AppDelegate.h"
 #import <HexFiend/HexFiend.h>
 #include <pthread.h>
-#include <objc/runtime.h>
 
 static const char *const kProgressContext = "context";
 
@@ -92,8 +91,11 @@ static inline Class preferredByteArrayClass(void) {
             @"DefaultFontName" : HFDEFAULT_FONT,
             @"DefaultFontSize" : @(HFDEFAULT_FONTSIZE),
             @"BytesPerColumn"  : @4,
-            @"DefaultStringEncoding" : @([NSString defaultCStringEncoding]),
+            @"DefaultStringEncoding" : [NSKeyedArchiver archivedDataWithRootObject:[HFNSStringEncoding ascii]],
             @"DefaultEditMode" : @(HFInsertMode),
+            @"BinaryTemplateSelectionColor" : [NSArchiver archivedDataWithRootObject:[NSColor lightGrayColor]],
+            @"BinaryTemplateRepresenterWidth" : @(250),
+            @"ResolveAliases": @YES,
         };
         [[NSUserDefaults standardUserDefaults] registerDefaults:defs];
         sRegisteredGlobalDefaults = YES;
@@ -158,7 +160,15 @@ static inline Class preferredByteArrayClass(void) {
 }
 
 - (NSArray *)representers {
-    return @[lineCountingRepresenter, hexRepresenter, asciiRepresenter, scrollRepresenter, dataInspectorRepresenter, statusBarRepresenter, textDividerRepresenter];
+    return @[lineCountingRepresenter,
+             hexRepresenter,
+             asciiRepresenter,
+             scrollRepresenter,
+             dataInspectorRepresenter,
+             statusBarRepresenter,
+             textDividerRepresenter,
+             binaryTemplateRepresenter,
+    ];
 }
 
 - (HFByteArray *)byteArray {
@@ -172,6 +182,11 @@ static inline Class preferredByteArrayClass(void) {
 
 - (void)showViewForRepresenter:(HFRepresenter *)rep {
     HFASSERT([[rep view] superview] == nil && [[rep view] window] == nil);
+    if (rep == statusBarRepresenter) {
+        NSView *view = rep.view;
+        [self.window setContentBorderThickness:view.frame.size.height forEdge:NSRectEdgeMinY];
+        [self.window setAutorecalculatesContentBorderThickness:NO forEdge:NSMinYEdge];
+    }
     [controller addRepresenter:rep];
     [layoutRepresenter addRepresenter:rep];
 }
@@ -179,6 +194,10 @@ static inline Class preferredByteArrayClass(void) {
 - (void)hideViewForRepresenter:(HFRepresenter *)rep {
     HFASSERT(rep != NULL);
     HFASSERT([layoutRepresenter.representers indexOfObjectIdenticalTo:rep] != NSNotFound);
+    if (rep == statusBarRepresenter) {
+        [self.window setContentBorderThickness:0 forEdge:NSRectEdgeMinY];
+        [self.window setAutorecalculatesContentBorderThickness:NO forEdge:NSMinYEdge];
+    }
     [controller removeRepresenter:rep];
     [layoutRepresenter removeRepresenter:rep];
 }
@@ -189,7 +208,7 @@ static inline Class preferredByteArrayClass(void) {
 
 /* Called to show or hide the divider representer. This should be shown when both our text representers are visible */
 - (void)showOrHideDividerRepresenter {
-    BOOL dividerRepresenterShouldBeShown = [self dividerRepresenterShouldBeShown];;
+    BOOL dividerRepresenterShouldBeShown = [self dividerRepresenterShouldBeShown];
     BOOL dividerRepresenterIsShown = [self representerIsShown:textDividerRepresenter];
     if (dividerRepresenterShouldBeShown && ! dividerRepresenterIsShown) {
         [self showViewForRepresenter:textDividerRepresenter];
@@ -207,6 +226,7 @@ static inline Class preferredByteArrayClass(void) {
     [shownRepresentersData setObject:dataInspectorRepresenter forKey:USERDEFS_KEY_FOR_REP(dataInspectorRepresenter)];
     [shownRepresentersData setObject:statusBarRepresenter forKey:USERDEFS_KEY_FOR_REP(statusBarRepresenter)];
     [shownRepresentersData setObject:scrollRepresenter forKey:USERDEFS_KEY_FOR_REP(scrollRepresenter)];
+    [shownRepresentersData setObject:binaryTemplateRepresenter forKey:USERDEFS_KEY_FOR_REP(binaryTemplateRepresenter)];
     NSUserDefaults *defs = [NSUserDefaults standardUserDefaults];
     NSEnumerator *keysEnum = [shownRepresentersData keyEnumerator];
     NSString *name = nil;
@@ -377,11 +397,6 @@ static inline Class preferredByteArrayClass(void) {
     [window setFrame:windowFrame display:YES];
 }
 
-- (void)setContainerView:(NSSplitView *)view {
-    /* Called when the nib is loaded.  We retain it. */
-    containerView = view;
-}
-
 /* Shared point for setting up a window, optionally setting a bytes per line */
 - (void)setupWindowEnforcingBytesPerLine:(NSUInteger)bplOrZero {
     NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
@@ -395,9 +410,6 @@ static inline Class preferredByteArrayClass(void) {
     [layoutView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     
     if (containerView) {
-        [containerView setVertical:NO];
-        [containerView setDividerStyle:NSSplitViewDividerStyleThin];
-        [containerView setDelegate:self];
         [layoutView setFrame:[containerView bounds]];
         [containerView addSubview:layoutView];
     }
@@ -444,22 +456,15 @@ static inline Class preferredByteArrayClass(void) {
     /* Set the delegate */
     [window setDelegate:self];
     
-    /* Find the split view */
+    /* Find the container view */
     NSView *contentView = [window contentView];
-    NSArray *contentSubviews = [contentView subviews];
-    NSAssert1([contentSubviews count] == 1, @"Unable to adopt transient window controller %@", windowController);
-    NSSplitView *splitView = contentSubviews[0];
-    NSAssert1([splitView isKindOfClass:[NSSplitView class]], @"Unable to adopt transient window controller %@", windowController);
+    containerView = contentView;
     
     /* Remove all of its subviews */
-    NSArray *existingViews = [[splitView subviews] copy];
-    for(NSView *view in existingViews) {
+    for (NSView *view in contentView.subviews) {
         [view removeFromSuperview];
     }
-    
-    /* It's our split view now! */
-    containerView = splitView;
-    
+
     /* Set up the window */
     [self setupWindowEnforcingBytesPerLine:oldBPL];
 }
@@ -534,6 +539,8 @@ static inline Class preferredByteArrayClass(void) {
     statusBarRepresenter = [[HFStatusBarRepresenter alloc] init];
     dataInspectorRepresenter = [[DataInspectorRepresenter alloc] init];
     textDividerRepresenter = [[TextDividerRepresenter alloc] init];
+    binaryTemplateRepresenter = [[HFBinaryTemplateRepresenter alloc] init];
+
     /* We will create layoutRepresenter when the window is actually shown
      * so that it will never exist in an inconsistent state */
     
@@ -567,7 +574,7 @@ static inline Class preferredByteArrayClass(void) {
         [controller setFont: font];
     }
     
-    [self setStringEncoding:[[NSUserDefaults standardUserDefaults] integerForKey:@"DefaultStringEncoding"]];
+    [self setStringEncoding:[(AppDelegate *)NSApp.delegate defaultStringEncoding]];
     
     static BOOL hasAddedMenu = NO;
     if (! hasAddedMenu) {
@@ -604,11 +611,10 @@ static inline Class preferredByteArrayClass(void) {
 }
 
 
-- (HFDocumentOperationView *)newOperationViewForNibName:(NSString *)name displayName:(NSString *)displayName fixedHeight:(BOOL)fixedHeight {
+- (HFDocumentOperationView *)newOperationViewForNibName:(NSString *)name displayName:(NSString *)displayName {
     HFASSERT(name);
     HFDocumentOperationView *result = [HFDocumentOperationView viewWithNibNamed:name owner:self];
     [result setDisplayName:displayName];
-    [result setIsFixedHeight:fixedHeight];
     [result setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     [result setFrameSize:NSMakeSize(NSWidth([containerView frame]), 0)];
     [result setFrameOrigin:NSZeroPoint];
@@ -620,29 +626,24 @@ static inline Class preferredByteArrayClass(void) {
     HFASSERT(operationView == nil);
     operationView = newSubview;
     bannerTargetHeight = [newSubview defaultHeight];
-    if (! bannerView) bannerView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 1, 1)];
     NSRect containerBounds = [containerView bounds];
-    NSRect bannerFrame = NSMakeRect(NSMinX(containerBounds), NSMaxY(containerBounds), NSWidth(containerBounds), 0);
-    [bannerView setFrame:bannerFrame];
+    if (! bannerView) {
+        NSRect bannerFrame = NSMakeRect(NSMinX(containerBounds), NSMaxY(containerBounds), NSWidth(containerBounds), 0);
+        bannerView = [[NSView alloc] initWithFrame:bannerFrame];
+    }
+    bannerView.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
     bannerStartTime = 0;
     bannerIsShown = YES;
     bannerGrowing = YES;
     targetFirstResponderInBanner = targetFirstResponder;
     
-    if(!bannerDividerThumb)
-        bannerDividerThumb = [[HFBannerDividerThumb alloc] initWithFrame:NSMakeRect(0, 0, 14, 14)];
-    [bannerDividerThumb setAutoresizingMask:0];
-    [bannerDividerThumb setFrameOrigin:NSMakePoint(3, 0)];
-    [bannerDividerThumb removeFromSuperview];
-    [bannerView addSubview:bannerDividerThumb];
     if (newSubview) {
         NSSize newSubviewSize = [newSubview frame].size;
         if (newSubviewSize.width != NSWidth(containerBounds)) {
             newSubviewSize.width = NSWidth(containerBounds);
             [newSubview setFrameSize:newSubviewSize];
         }
-        if (bannerDividerThumb) [bannerView addSubview:newSubview positioned:NSWindowBelow relativeTo:bannerDividerThumb];
-        else [bannerView addSubview:newSubview];
+        [bannerView addSubview:newSubview];
     }
     [bannerResizeTimer invalidate];
     bannerResizeTimer = [NSTimer scheduledTimerWithTimeInterval:1. / 60. target:self selector:@selector(animateBanner:) userInfo:nil repeats:YES];
@@ -659,20 +660,24 @@ static inline Class preferredByteArrayClass(void) {
     return YES;
 }
 
++ (HFByteArray *)byteArrayfromURL:(NSURL *)absoluteURL error:(NSError **)outError {
+    HFASSERT([absoluteURL isFileURL]);
+    HFFileReference *fileReference = [[HFFileReference alloc] initWithPath:[absoluteURL path] error:outError];
+    if (!fileReference) {
+        return nil;
+    }
+    HFFileByteSlice *byteSlice = [[HFFileByteSlice alloc] initWithFile:fileReference];
+    HFByteArray *byteArray = [[preferredByteArrayClass() alloc] init];
+    [byteArray insertByteSlice:byteSlice inRange:HFRangeMake(0, 0)];
+    return byteArray;
+}
+
 - (BOOL)readFromURL:(NSURL *)absoluteURL ofType:(NSString *)typeName error:(NSError **)outError {
     USE(typeName);
     USE(outError);
     BOOL result = NO;
-    HFASSERT([absoluteURL isFileURL]);
-    HFFileReference *fileReference = [[HFFileReference alloc] initWithPath:[absoluteURL path] error:outError];
-    if (fileReference) {
-        
-        HFFileByteSlice *byteSlice = [[HFFileByteSlice alloc] initWithFile:fileReference];
-        //        HFByteSlice *byteSlice = [[[NSClassFromString(@"HFRandomDataByteSlice") alloc] initWithRandomDataLength:ULLONG_MAX] autorelease];
-        //        pid_t pid = [[[NSRunningApplication runningApplicationsWithBundleIdentifier:@"com.apple.TextEdit"] lastObject] processIdentifier];
-        //        HFByteSlice *byteSlice = [[[NSClassFromString(@"HFProcessMemoryByteSlice") alloc] initWithPID:pid range:HFRangeMake(0, 1 + (unsigned long long)UINT_MAX)] autorelease];
-        HFByteArray *byteArray = [[preferredByteArrayClass() alloc] init];
-        [byteArray insertByteSlice:byteSlice inRange:HFRangeMake(0, 0)];
+    HFByteArray *byteArray = [[self class] byteArrayfromURL:absoluteURL error:outError];
+    if (byteArray) {
         [controller setByteArray:byteArray];
         cleanGenerationCount = [byteArray changeGenerationCount];
         result = YES;
@@ -749,11 +754,11 @@ static inline Class preferredByteArrayClass(void) {
     [self setFont:[NSFont fontWithName:[font fontName] size:[font pointSize] - 1] registeringUndo:YES];
 }
 
-- (NSStringEncoding)stringEncoding {
+- (HFStringEncoding *)stringEncoding {
     return [(HFStringEncodingTextRepresenter *)asciiRepresenter encoding];
 }
 
-- (void)setStringEncoding:(NSStringEncoding)encoding {
+- (void)setStringEncoding:(HFStringEncoding *)encoding {
     NSUInteger bytesPerLine = [controller bytesPerLine];
     [(HFStringEncodingTextRepresenter *)asciiRepresenter setEncoding:encoding];
     if ([[self windowControllers] count] > 0) {
@@ -763,7 +768,7 @@ static inline Class preferredByteArrayClass(void) {
 }
 
 - (void)setStringEncodingFromMenuItem:(NSMenuItem *)item {
-    [self setStringEncoding:[item tag]];
+    [self setStringEncoding:item.representedObject];
     
     /* Call to the delegate so it sets the default */
     [(AppDelegate*)[NSApp delegate] setStringEncodingFromMenuItem:item];
@@ -919,7 +924,7 @@ static inline Class preferredByteArrayClass(void) {
 - (void)finishedAnimation {
     if (! bannerGrowing) {
         bannerIsShown = NO;
-        [bannerDividerThumb removeFromSuperview];
+        [operationView removeFromSuperview];
         [bannerView removeFromSuperview];
         [[[bannerView subviews] copy] makeObjectsPerformSelector:@selector(removeFromSuperview)];
         bannerView = nil;
@@ -985,8 +990,13 @@ static inline Class preferredByteArrayClass(void) {
     CGFloat height = (CGFloat)round(bannerTargetHeight * amount);
     NSRect bannerFrame = [bannerView frame];
     bannerFrame.size.height = height;
+    bannerFrame.origin.y = NSMaxY(containerView.frame) - height;
     [bannerView setFrame:bannerFrame];
-    [containerView display];
+    NSView *layoutView = [layoutRepresenter view];
+    NSRect layoutFrame = layoutView.frame;
+    layoutFrame.size.height = containerView.frame.size.height - height;
+    layoutView.frame = layoutFrame;
+
     if (isFirstCall) {
         /* The first display can take some time, which can cause jerky animation; so we start the animation after it */
         bannerStartTime = CFAbsoluteTimeGetCurrent();
@@ -1065,16 +1075,16 @@ static inline Class preferredByteArrayClass(void) {
     
     showSaveViewAfterDelayTimer = [NSTimer scheduledTimerWithTimeInterval:.5 target:self selector:@selector(showSaveBannerHavingDelayed:) userInfo:nil repeats:NO];
     
-    if (! saveView) saveView = [self newOperationViewForNibName:@"SaveBanner" displayName:@"Saving" fixedHeight:YES];
+    if (! saveView) saveView = [self newOperationViewForNibName:@"SaveBanner" displayName:@"Saving"];
     
     [[controller byteArray] incrementChangeLockCounter];
     
     [(NSTextField*)[saveView viewNamed:@"saveLabelField"] setStringValue:[NSString stringWithFormat:@"Saving \"%@\"", [self displayName]]];
 
     __block NSInteger saveResult = 0;
+    __block NSError *operationError = nil;
     [saveView startOperation:^id(HFProgressTracker *tracker) {
-        id result = [self threadedSaveToURL:inAbsoluteURL trackingProgress:tracker error:outError];
-        /* Retain the error so it can be autoreleased in the main thread */
+        id result = [self threadedSaveToURL:inAbsoluteURL trackingProgress:tracker error:&operationError];
         return result;
     } completionHandler:^(id result) {
         saveResult = [result integerValue];
@@ -1082,6 +1092,10 @@ static inline Class preferredByteArrayClass(void) {
         /* Post an event so our event loop wakes up */
         [NSApp postEvent:[NSEvent otherEventWithType:NSApplicationDefined location:NSZeroPoint modifierFlags:0 timestamp:0 windowNumber:0 context:NULL subtype:0 data1:0 data2:0] atStart:NO];
     }];
+
+    if (operationError && outError) {
+        *outError = operationError;
+    }
 
     while ([saveView operationIsRunning]) {
         @autoreleasepool {
@@ -1168,7 +1182,7 @@ static inline Class preferredByteArrayClass(void) {
 
 - (void)showFindPanel:(NSMenuItem *)item {
     dispatch_block_t selectText = ^{
-        NSView *field = [findReplaceView viewNamed:@"searchField"];
+        NSView *field = [self->findReplaceView viewNamed:@"searchField"];
         HFASSERT([field isKindOfClass:[HFTextField class]]);
         [(HFTextField*)field selectAll:nil];
     };
@@ -1189,7 +1203,7 @@ static inline Class preferredByteArrayClass(void) {
     }
     
     if (! findReplaceView) {
-        findReplaceView = [self newOperationViewForNibName:@"FindReplaceBanner" displayName:@"Finding" fixedHeight:NO];
+        findReplaceView = [self newOperationViewForNibName:@"FindReplaceBanner" displayName:@"Finding"];
         [(HFTextField*)[findReplaceView viewNamed:@"searchField"] setTarget:self];
         [(HFTextField*)[findReplaceView viewNamed:@"searchField"] setAction:@selector(findNext:)];
         [(HFTextField*)[findReplaceView viewNamed:@"replaceField"] setTarget:self];
@@ -1198,60 +1212,6 @@ static inline Class preferredByteArrayClass(void) {
     
     commandToRunAfterBannerPrepared = selectText;
     [self prepareBannerWithView:findReplaceView withTargetFirstResponder:[findReplaceView viewNamed:@"searchField"]];
-}
-
-- (NSRect)splitView:(NSSplitView *)splitView additionalEffectiveRectOfDividerAtIndex:(NSInteger)dividerIndex {
-    USE(dividerIndex);
-    HFASSERT(splitView == containerView);
-    if (bannerDividerThumb) return [bannerDividerThumb convertRect:[bannerDividerThumb bounds] toView:containerView];
-    else return NSZeroRect;
-}
-
-- (BOOL)splitView:(NSSplitView *)splitView canCollapseSubview:(NSView *)subview {
-    HFASSERT(splitView == containerView);
-    return subview == bannerView;
-}
-
-- (BOOL)splitView:(NSSplitView *)splitView shouldCollapseSubview:(NSView *)subview forDoubleClickOnDividerAtIndex:(NSInteger)dividerIndex {
-    HFASSERT(splitView == containerView);
-    USE(dividerIndex);
-    if (subview == bannerView && subview != NULL) {
-        [self hideBannerFirstThenDo:NULL];
-    }
-    return NO;
-}
-
-- (CGFloat)splitView:(NSSplitView *)splitView constrainMaxCoordinate:(CGFloat)proposedMaximumPosition ofSubviewAt:(NSInteger)dividerIndex {
-    HFASSERT(splitView == containerView);
-    CGFloat result = proposedMaximumPosition;
-    /* If our operation view is fixed height, then don't allow it to grow beyond its initial height */
-    if (operationView != nil && [operationView isFixedHeight]) {
-        /* Make sure it's actually our view */
-        if (dividerIndex == 0 && [splitView subviews][0] == bannerView) {
-            CGFloat maxHeight = [operationView defaultHeight];
-            if (maxHeight > 0 && maxHeight < proposedMaximumPosition) {
-                result = maxHeight;
-            }
-        }
-    }
-    return result;
-}
-
-- (void)removeBannerIfSufficientlyShort:unused {
-    USE(unused);
-    willRemoveBannerIfSufficientlyShortAfterDrag = NO;
-    if (bannerIsShown && bannerResizeTimer == NULL && NSHeight([bannerView frame]) < 20.) {
-        [self hideBannerFirstThenDo:NULL];
-    }
-}
-
-- (void)splitViewDidResizeSubviews:(NSNotification *)notification {
-    USE(notification);
-    /* If the user drags the banner so that it is very small, we want it to shrink to nothing when it is released.  We handle this by checking if we are in live resize, and setting a timer to fire in NSDefaultRunLoopMode to remove the banner. */
-    if (willRemoveBannerIfSufficientlyShortAfterDrag == NO && bannerResizeTimer == nil && [containerView inLiveResize]) {
-        willRemoveBannerIfSufficientlyShortAfterDrag = YES;
-        [self performSelector:@selector(removeBannerIfSufficientlyShort:) withObject:nil afterDelay:0. inModes:@[NSDefaultRunLoopMode]];
-    }
 }
 
 - (void)cancelOperation:sender {
@@ -1280,31 +1240,6 @@ static inline Class preferredByteArrayClass(void) {
     if (searchResult == ULLONG_MAX) {
         searchResult = [haystack indexOfBytesEqualToBytes:needle inRange:range2 searchingForwards:forwards trackingProgress:tracker];
     }
-    if (tracker->cancelRequested) return nil;
-    else return @(searchResult);
-}
-
-- (id)threadedStartFind:(HFProgressTracker *)tracker {
-    HFASSERT(tracker != NULL);
-    unsigned long long searchResult;
-    NSDictionary *userInfo = [tracker userInfo];
-    HFByteArray *needle = userInfo[@"needle"];
-    HFByteArray *haystack = userInfo[@"haystack"];
-    BOOL forwards = [userInfo[@"forwards"] boolValue];
-    HFRange searchRange1 = [userInfo[@"range1"] HFRange];
-    HFRange searchRange2 = [userInfo[@"range2"] HFRange];
-    
-    [tracker setMaxProgress:[haystack length]];
-    
-    //    CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
-    searchResult = [haystack indexOfBytesEqualToBytes:needle inRange:searchRange1 searchingForwards:forwards trackingProgress:tracker];
-    //    CFAbsoluteTime end = CFAbsoluteTimeGetCurrent();
-    //    printf("Diff: %f\n", end - start);
-    
-    if (searchResult == ULLONG_MAX) {
-        searchResult = [haystack indexOfBytesEqualToBytes:needle inRange:searchRange2 searchingForwards:forwards trackingProgress:tracker];
-    }
-    
     if (tracker->cancelRequested) return nil;
     else return @(searchResult);
 }
@@ -1363,10 +1298,10 @@ static inline Class preferredByteArrayClass(void) {
                 if (result) NSBeep();
             } else {
                 HFRange resultRange = HFRangeMake(searchResult, [needle length]);
-                [controller setSelectedContentsRanges:[HFRangeWrapper withRanges:&resultRange count:1]];
-                [controller maximizeVisibilityOfContentsRange:resultRange];
+                [self->controller setSelectedContentsRanges:[HFRangeWrapper withRanges:&resultRange count:1]];
+                [self->controller maximizeVisibilityOfContentsRange:resultRange];
                 [self restoreFirstResponderToSavedResponder];
-                [controller pulseSelection];
+                [self->controller pulseSelection];
             }
             [needle decrementChangeLockCounter];
             [haystack decrementChangeLockCounter];
@@ -1473,7 +1408,7 @@ cancelled:;
         [haystack decrementChangeLockCounter];
         [replacementValue decrementChangeLockCounter];
         if (newByteArray != nil) {
-            [controller replaceByteArray:newByteArray];
+            [self->controller replaceByteArray:newByteArray];
         }
     }];
 }
@@ -1527,7 +1462,7 @@ cancelled:;
         [self saveFirstResponderIfNotInBannerAndThenSetItTo:[moveSelectionByView viewNamed:@"moveSelectionByTextField"]];
         return;
     }
-    if (! moveSelectionByView) moveSelectionByView = [self newOperationViewForNibName:@"MoveSelectionByBanner" displayName:@"Moving Selection" fixedHeight:YES];
+    if (! moveSelectionByView) moveSelectionByView = [self newOperationViewForNibName:@"MoveSelectionByBanner" displayName:@"Moving Selection"];
     [(NSButton*)[moveSelectionByView viewNamed:@"extendSelectionByCheckbox"] setIntValue:extend];
     [self prepareBannerWithView:moveSelectionByView withTargetFirstResponder:[moveSelectionByView viewNamed:@"moveSelectionByTextField"]];
     
@@ -1569,7 +1504,7 @@ cancelled:;
         [self hideBannerFirstThenDo:^(){[self jumpToOffset:sender];}];
         return;
     }
-    if (! jumpToOffsetView) jumpToOffsetView = [self newOperationViewForNibName:@"JumpToOffsetBanner" displayName:@"Jumping to Offset" fixedHeight:YES];
+    if (! jumpToOffsetView) jumpToOffsetView = [self newOperationViewForNibName:@"JumpToOffsetBanner" displayName:@"Jumping to Offset"];
     if (operationView == jumpToOffsetView) {
         [self saveFirstResponderIfNotInBannerAndThenSetItTo:[jumpToOffsetView viewNamed:@"moveSelectionByTextField"]];
     } else {
@@ -1871,9 +1806,9 @@ cancelled:;
             /* We aren't able to remove our dependency on this file in this document, so ask permission to close it.  We don't try to save the document first, because if saving the document would require breaking dependencies in another document, we could get into an infinite loop! */
             NSAlert *alert = [[NSAlert alloc] init];
             [alert setMessageText:[NSString stringWithFormat:@"This document contains data that will be overwritten if you save the document \"%@.\"", [documentForThisByteArray displayName]]];
-            [alert setInformativeText:@"To save that document, you must close this one."];
-            [alert addButtonWithTitle:@"Cancel Save"];
-            [alert addButtonWithTitle:@"Close, Discarding Any Changes"];
+            [alert setInformativeText:NSLocalizedString(@"To save that document, you must close this one.", "")];
+            [alert addButtonWithTitle:NSLocalizedString(@"Cancel Save", "")];
+            [alert addButtonWithTitle:NSLocalizedString(@"Close, Discarding Any Changes", "")];
             [alert beginSheetModalForWindow:[document windowForSheet] modalDelegate:self didEndSelector:@selector(didEndBreakFileDependencySheet:returnCode:contextInfo:) contextInfo:nil];
             NSInteger modalResult = [NSApp runModalForWindow:[alert window]];
             
@@ -1917,6 +1852,10 @@ cancelled:;
     [controller setShouldLiveReload:newVal];
     [[NSUserDefaults standardUserDefaults] setBool:newVal forKey:@"LiveReload"];
     [self setShouldLiveReload:[controller shouldLiveReload]];
+}
+
+- (void)insertData:(NSData *)data {
+    [controller insertData:data replacingPreviousBytes:0 allowUndoCoalescing:NO];
 }
 
 @end

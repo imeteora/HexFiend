@@ -25,12 +25,6 @@
 - (void)scrollToFocusedInstruction;
 @end
 
-@interface NSEvent (HFLionStuff)
-- (CGFloat)scrollingDeltaY;
-- (BOOL)hasPreciseScrollingDeltas;
-- (CGFloat)deviceDeltaY;
-@end
-
 @implementation DiffDocument
 
 /* Returns either nil, or an array of two documents that would be compared in the "Compare (Range of) Front Documents" menu item. */
@@ -52,11 +46,13 @@
 }
 
 + (void)compareDocument:(BaseDataDocument *)document againstDocument:(BaseDataDocument *)otherDocument usingRange:(HFRange)range {
-    
     // convert documents to bytearrays
     HFByteArray *leftBytes = [document byteArray];
     HFByteArray *rightBytes = [otherDocument byteArray];
-    
+    [self compareByteArray:leftBytes againstByteArray:rightBytes usingRange:range leftFileName:[document displayName] rightFileName:[otherDocument displayName]];
+}
+
++ (void)compareByteArray:(HFByteArray *)leftBytes againstByteArray:(HFByteArray *)rightBytes usingRange:(HFRange)range leftFileName:(NSString *)leftFileName rightFileName:(NSString *)rightFileName {
     // extract range if present
     if (range.length > 0) {
         leftBytes = [leftBytes subarrayWithRange:range];
@@ -65,8 +61,8 @@
     
     // launch diff window
     DiffDocument *doc = [[DiffDocument alloc] initWithLeftByteArray:leftBytes rightByteArray:rightBytes range:range];
-    doc.leftFileName = [document displayName];
-    doc.rightFileName = [otherDocument displayName];
+    doc.leftFileName = leftFileName;
+    doc.rightFileName = rightFileName;
     [[NSDocumentController sharedDocumentController] addDocument:doc];
     [doc makeWindowControllers];
     [doc showWindows];
@@ -153,14 +149,14 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
             leftRect.size = NSMakeSize(0, [[leftTextView controller] lineHeight]);
         }
         else {
-            leftRect = [left furthestRectOnEdge:NSMaxXEdge forByteRange:leftRange];
+            leftRect = [left furthestRectOnEdge:CGRectMaxXEdge forByteRange:leftRange];
         }
         if (rightRange.length == 0) {
             rightRect.origin = [right locationOfCharacterAtByteIndex:rightRange.location];
             rightRect.size = NSMakeSize(0, [[rightTextView controller] lineHeight]);
         }
         else {
-            rightRect = [right furthestRectOnEdge:NSMinXEdge forByteRange:rightRange];
+            rightRect = [right furthestRectOnEdge:CGRectMinXEdge forByteRange:rightRange];
         }
         //leftRect and rightRect may have origins of CGFLOAT_MAX and -CGFLOAT_MAX.  Converting them is a sketchy thing to do.  But in that case, the range type will be RangeIsAbove or RangeIsBelow, in which case the rect is ignored
         
@@ -665,10 +661,10 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
     [leftBytes incrementChangeLockCounter];
     [rightBytes incrementChangeLockCounter];
     [diffComputationView startOperation:^id(HFProgressTracker *tracker) {
-        return [[HFByteArrayEditScript alloc] initWithDifferenceFromSource:leftBytes toDestination:rightBytes trackingProgress:tracker];
+        return [[HFByteArrayEditScript alloc] initWithDifferenceFromSource:self->leftBytes toDestination:self->rightBytes trackingProgress:tracker];
     } completionHandler:^(id script) {
-        [leftBytes decrementChangeLockCounter];
-        [rightBytes decrementChangeLockCounter];
+        [self->leftBytes decrementChangeLockCounter];
+        [self->rightBytes decrementChangeLockCounter];
         
         /* script may be nil if we cancelled */
         if (! script) {
@@ -676,9 +672,9 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
         } else {
             
             /* Hide the script banner */
-            if (operationView != nil && operationView == diffComputationView) [self hideBannerFirstThenDo:NULL];
+            if (self->operationView != nil && self->operationView == self->diffComputationView) [self hideBannerFirstThenDo:NULL];
             
-            editScript = script;
+            self->editScript = script;
             [self showInstructionsFromEditScript];	
         }
     }];
@@ -716,7 +712,7 @@ static enum DiffOverlayViewRangeType_t rangeTypeForValue(CGFloat value) {
 
     /* Create the diff computation view */
     if (! diffComputationView) {
-        diffComputationView = [self newOperationViewForNibName:@"DiffComputationBanner" displayName:@"Diffing" fixedHeight:YES];
+        diffComputationView = [self newOperationViewForNibName:@"DiffComputationBanner" displayName:@"Diffing"];
     }
     [self prepareBannerWithView:diffComputationView withTargetFirstResponder:nil];
     [self kickOffComputeDiff];

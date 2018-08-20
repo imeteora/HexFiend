@@ -7,8 +7,6 @@
 
 #import "HFDocumentOperationView.h"
 #import <HexFiend/HFProgressTracker.h>
-#include <dispatch/dispatch.h>
-#include <objc/message.h>
 
 static NSString *sNibName;
 
@@ -29,18 +27,8 @@ static NSString *sNibName;
     if (! path) [NSException raise:NSInvalidArgumentException format:@"Unable to find nib named %@", name];
     sNibName = [name copy];
     NSMutableArray *topLevelObjects = [NSMutableArray array];
-    if ([[NSBundle mainBundle] respondsToSelector:@selector(loadNibNamed:owner:topLevelObjects:)]) {
-        /* for Mac OS X 10.8 or higher */
-        // unlike -loadNibFile:externalNameTable:withZone: which is deprecated in 10.8, this method does
-        // not retain top level objects automatically, so objects must be set retain
-        if (! [[NSBundle mainBundle] loadNibNamed:name owner:owner topLevelObjects:&topLevelObjects]) {
-            [NSException raise:NSInvalidArgumentException format:@"Unable to load nib at path %@", path];
-        }
-    } else {
-        /* for Mac OS X 10.7 or lower */
-        if (! [NSBundle loadNibFile:path externalNameTable:@{@"NSTopLevelObjects": topLevelObjects, @"NSOwner": owner} withZone:NULL]) {
-            [NSException raise:NSInvalidArgumentException format:@"Unable to load nib at path %@", path];
-        }
+    if (! [[NSBundle mainBundle] loadNibNamed:name owner:owner topLevelObjects:&topLevelObjects]) {
+        [NSException raise:NSInvalidArgumentException format:@"Unable to load nib at path %@", path];
     }
     sNibName = nil;
     HFDocumentOperationView *resultObject = nil;
@@ -108,14 +96,6 @@ static NSView *searchForViewWithIdentifier(NSView *view, NSString *identifier) {
     return defaultSize.height;
 }
 
-- (void)setIsFixedHeight:(BOOL)val {
-    isFixedHeight = val;
-}
-
-- (BOOL)isFixedHeight {
-    return isFixedHeight;
-}
-
 - (BOOL)selectorIsSetMethod:(SEL)sel {
     BOOL result = NO;
     const char *selName = sel_getName(sel);
@@ -134,6 +114,15 @@ static NSView *searchForViewWithIdentifier(NSView *view, NSString *identifier) {
 
 - (void)drawRect:(NSRect)dirtyRect {
     USE(dirtyRect);
+    
+    NSRect bounds = self.bounds;
+    
+    if (HFDarkModeEnabled()) {
+        [[NSColor controlBackgroundColor] set];
+        NSRectFillUsingOperation(self.bounds, NSCompositeSourceOver);
+        return;
+    }
+
     static NSGradient *sGradient = nil;
     if (! sGradient) {
         NSColor *startColor = [NSColor colorWithCalibratedWhite:1. alpha:1.];
@@ -141,7 +130,11 @@ static NSView *searchForViewWithIdentifier(NSView *view, NSString *identifier) {
         NSColor *endColor = [NSColor colorWithCalibratedWhite:.9 alpha:1.];
         sGradient = [[NSGradient alloc] initWithColors:@[startColor, midColor, endColor]];
     }
-    [sGradient drawInRect:[self bounds] angle:-90];
+    [sGradient drawInRect:bounds angle:-90];
+    
+    [[NSColor lightGrayColor] set];
+    NSRect line = NSMakeRect(NSMinX(bounds), NSMinY(bounds), NSWidth(bounds), 1.0);
+    NSFrameRectWithWidthUsingOperation(line, 1.0, NSCompositeSourceOver);
 }
 
 - (BOOL)isOpaque {
@@ -159,7 +152,6 @@ static NSView *searchForViewWithIdentifier(NSView *view, NSString *identifier) {
     completionHandler = nil;
     tracker = nil;
     [self willChangeValueForKey:@"operationIsRunning"];
-    dispatch_release(waitGroup);
     waitGroup = NULL;
     [self didChangeValueForKey:@"operationIsRunning"];
     [cancelButton setHidden: ! [self operationIsRunning]];
@@ -217,8 +209,8 @@ static NSView *searchForViewWithIdentifier(NSView *view, NSString *identifier) {
     waitGroup = dispatch_group_create();
     dispatch_group_async(waitGroup, dispatch_get_global_queue(0, 0), ^{
         @autoreleasepool {
-            threadResult = block(tracker);
-            [tracker noteFinished:self];
+            self->threadResult = block(self->tracker);
+            [self->tracker noteFinished:self];
         }
     });
     [self didChangeValueForKey:@"operationIsRunning"];

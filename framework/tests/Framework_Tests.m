@@ -5,7 +5,6 @@
 //  Copyright 2010 ridiculous_fish. All rights reserved.
 //
 
-#import <Cocoa/Cocoa.h>
 #import <XCTest/XCTest.h>
 #include <sys/stat.h>
 
@@ -402,7 +401,7 @@ static NSUInteger random_upto(unsigned long long val) {
     }
     
     HFFileReference *ref;
-    HFByteArray *array =  byteArrayForFile([fileURL path], &ref);
+    HFByteArray *array = byteArrayForFile([fileURL path], &ref);
     XCTAssert([ref length] == [data length]);
     XCTAssert([HFHashByteArray(array) isEqual:HFHashFile(fileURL)]);
     

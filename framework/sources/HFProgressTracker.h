@@ -6,7 +6,7 @@
 //  Copyright 2008 ridiculous_fish. All rights reserved.
 //
 
-#import <Cocoa/Cocoa.h>
+NS_ASSUME_NONNULL_BEGIN
 
 /*!
 @class HFProgressTracker
@@ -32,7 +32,9 @@
     volatile int cancelRequested;
     @private
     unsigned long long maxProgress;
+#if !TARGET_OS_IPHONE
     NSProgressIndicator *progressIndicator;
+#endif
     NSTimer *progressTimer;
     double lastSetValue;
     id delegate;
@@ -48,10 +50,12 @@
 */
 @property (nonatomic, copy) NSDictionary *userInfo;
 
+#if !TARGET_OS_IPHONE
 /*!
   The progressIndicator property allows an NSProgressIndicator to be associated with the HFProgressTracker.  The progress indicator should have values in the range 0 to 1, and it will be updated with the fraction currentProgress / maxProgress.
 */
-@property (nonatomic, strong) NSProgressIndicator *progressIndicator;
+@property (nullable, nonatomic, strong) NSProgressIndicator *progressIndicator;
+#endif
 
 /*!
   Called to indicate you want to begin tracking the progress, which means that the progress indicator will be updated, and the delegate callbacks may fire.
@@ -76,7 +80,7 @@
 /*!
   Set and get the delegate, which may implement the optional methods below.
 */
-@property (nonatomic, assign) id delegate;
+@property (nullable, nonatomic, assign) id delegate;
 
 @end
 
@@ -100,3 +104,5 @@ The HFProgressTrackerDelegate methods are called on the the HFProgressTracker's 
 - (void)progressTrackerDidFinish:(HFProgressTracker *)tracker;
 
 @end
+
+NS_ASSUME_NONNULL_END

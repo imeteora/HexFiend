@@ -5,7 +5,7 @@
 //  Copyright 2007 ridiculous_fish. All rights reserved.
 //
 
-#import <HexFiend/HFByteArray_Internal.h>
+#import "HFByteArray_Internal.h"
 #import <HexFiend/HFFullMemoryByteSlice.h>
 
 
@@ -132,6 +132,9 @@
     if (length > [self length] || length > range.length) return ULLONG_MAX;
     if (length == 0) {
         return range.location;
+    }
+    else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"CaseInsensitiveSearch"]) {
+        return [self _byteSearchNaive:findBytes inRange:range forwards:forwards trackingProgress:progressTracker caseInsensitive:YES];
     }
     else if (length == 1) {
         unsigned char byte;

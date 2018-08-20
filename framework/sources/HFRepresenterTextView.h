@@ -5,7 +5,6 @@
 //  Copyright 2007 ridiculous_fish. All rights reserved.
 //
 
-#import <Cocoa/Cocoa.h>
 #import <HexFiend/HFGlyphTrie.h>
 
 /*  Bytes per column philosophy
@@ -17,24 +16,35 @@
     Since a value of zero is nonsensical, we can use it to specify no spaces at all.
 */
 
+NS_ASSUME_NONNULL_BEGIN
+
 #define HFTV_BYTES_PER_COLUMN_MAX_VALUE (1 << (HFTV_BYTES_PER_COLUMN_BITFIELD_SIZE - 1))
 
 @class HFTextRepresenter;
 
 
 /* The base class for HFTextRepresenter views - such as the hex or ASCII text view */
-@interface HFRepresenterTextView : NSView {
+@interface HFRepresenterTextView :
+#if TARGET_OS_IPHONE
+UIView
+#else
+NSView
+#endif
+{
 @private;
     HFTextRepresenter *representer;
     NSArray *cachedSelectedRanges;
+    NSArray<NSDictionary*> *cachedColorRanges;
     CGFloat verticalOffset;
     CGFloat horizontalContainerInset;
     CGFloat defaultLineHeight;
     NSTimer *caretTimer;
+#if !TARGET_OS_IPHONE
     NSWindow *pulseWindow;
-    NSRect pulseWindowBaseFrameInScreenCoordinates;
-    NSRect lastDrawnCaretRect;
-    NSRect caretRectToDraw;
+#endif
+    CGRect pulseWindowBaseFrameInScreenCoordinates;
+    CGRect lastDrawnCaretRect;
+    CGRect caretRectToDraw;
     NSUInteger bytesBetweenVerticalGuides;
     NSUInteger startingLineBackgroundColorIndex;
     NSArray *rowBackgroundColors;
@@ -58,29 +68,33 @@
 
 - (HFTextRepresenter *)representer;
 
+#if TARGET_OS_IPHONE
+@property (nonatomic, copy) UIFont *font;
+#else
 @property (nonatomic, copy) NSFont *font;
+#endif
 
 /* Set and get data.  setData: will invalidate the correct regions (perhaps none) */
 @property (nonatomic, copy) NSData *data;
 @property (nonatomic) CGFloat verticalOffset;
 @property (nonatomic) NSUInteger startingLineBackgroundColorIndex;
 @property (nonatomic, getter=isEditable) BOOL editable;
-@property (nonatomic, copy) NSArray *styles;
+@property (nullable, nonatomic, copy) NSArray *styles;
 @property (nonatomic) BOOL shouldAntialias;
 
 - (BOOL)behavesAsTextField;
 - (BOOL)showsFocusRing;
 - (BOOL)isWithinMouseDown;
 
-- (NSRect)caretRect;
+- (CGRect)caretRect;
 
 - (void)setBookmarks:(NSDictionary *)bookmarks;
 @property (nonatomic) BOOL shouldDrawCallouts;
 
-- (void)setByteColoring:(void (^)(uint8_t byte, uint8_t *r, uint8_t *g, uint8_t *b, uint8_t *a))coloring;
+- (void)setByteColoring:(nullable void (^)(uint8_t byte, uint8_t *r, uint8_t *g, uint8_t *b, uint8_t *a))coloring;
 
-- (NSPoint)originForCharacterAtByteIndex:(NSInteger)index;
-- (NSUInteger)indexOfCharacterAtPoint:(NSPoint)point;
+- (CGPoint)originForCharacterAtByteIndex:(NSInteger)index;
+- (NSUInteger)indexOfCharacterAtPoint:(CGPoint)point;
 
 /* The amount of padding space to inset from the left and right side. */
 @property (nonatomic) CGFloat horizontalContainerInset;
@@ -88,37 +102,39 @@
 /* The number of bytes between vertical guides. 0 means no drawing of guides. */
 @property (nonatomic) NSUInteger bytesBetweenVerticalGuides;
 
-/* To be invoked from drawRect:. */
-- (void)drawCaretIfNecessaryWithClip:(NSRect)clipRect;
-- (void)drawSelectionIfNecessaryWithClip:(NSRect)clipRect;
-
 /* For font substitution.  An index of 0 means the default (base) font. */
+#if TARGET_OS_IPHONE
+- (UIFont *)fontAtSubstitutionIndex:(uint16_t)idx;
+#else
 - (NSFont *)fontAtSubstitutionIndex:(uint16_t)idx;
+#endif
 
 /* Uniformly "rounds" the byte range so that it contains an integer number of characters.  The algorithm is to "floor:" any character intersecting the min of the range are included, and any character extending beyond the end of the range is excluded. If both the min and the max are within a single character, then an empty range is returned. */
 - (NSRange)roundPartialByteRange:(NSRange)byteRange;
 
-- (void)drawTextWithClip:(NSRect)clipRect restrictingToTextInRanges:(NSArray *)restrictingToRanges;
-
 /* Must be overridden */
 - (void)extractGlyphsForBytes:(const unsigned char *)bytes count:(NSUInteger)numBytes offsetIntoLine:(NSUInteger)offsetIntoLine intoArray:(struct HFGlyph_t *)glyphs advances:(CGSize *)advances resultingGlyphCount:(NSUInteger *)resultGlyphCount;
 
-- (void)extractGlyphsForBytes:(const unsigned char *)bytePtr range:(NSRange)byteRange intoArray:(struct HFGlyph_t *)glyphs advances:(CGSize *)advances withInclusionRanges:(NSArray *)restrictingToRanges initialTextOffset:(CGFloat *)initialTextOffset resultingGlyphCount:(NSUInteger *)resultingGlyphCount;
+- (void)extractGlyphsForBytes:(const unsigned char *)bytePtr range:(NSRange)byteRange intoArray:(struct HFGlyph_t *)glyphs advances:(CGSize *)advances withInclusionRanges:(NSArray *)restrictingToRanges initialTextOffset:(CGFloat *)initialTextOffset resultingGlyphCount:(nullable NSUInteger *)resultingGlyphCount;
 
 /* Must be overridden - returns the max number of glyphs for a given number of bytes */
 - (NSUInteger)maximumGlyphCountForByteCount:(NSUInteger)byteCount;
 
 - (void)updateSelectedRanges;
 - (void)updateSelectionPulse;
-- (void)terminateSelectionPulse; // Start fading the pulse.
 
 /* Given a rect edge, return an NSRect representing the maximum edge in that direction.  The dimension in the direction of the edge is 0 (so if edge is NSMaxXEdge, the resulting width is 0).  The returned rect is in the coordinate space of the receiver's view.  If the byte range is not displayed, returns NSZeroRect.
  */
-- (NSRect)furthestRectOnEdge:(NSRectEdge)edge forRange:(NSRange)range;
+- (CGRect)furthestRectOnEdge:(CGRectEdge)edge forRange:(NSRange)range;
 
 /* The background color for the line at the given index.  You may override this to return different colors.  You may return nil to draw no color in this line (and then the empty space color will appear) */
-- (NSColor *)backgroundColorForLine:(NSUInteger)line;
+#if TARGET_OS_IPHONE
+- (nullable UIColor *)backgroundColorForLine:(NSUInteger)line;
+- (UIColor *)backgroundColorForEmptySpace;
+#else
+- (nullable NSColor *)backgroundColorForLine:(NSUInteger)line;
 - (NSColor *)backgroundColorForEmptySpace;
+#endif
 
 /* Defaults to 1, may override */
 - (NSUInteger)bytesPerCharacter;
@@ -144,5 +160,14 @@
 
 - (IBAction)selectAll:sender;
 
+@end
+
+#if !TARGET_OS_IPHONE
+@interface NSObject (HFRepresenterTextDelegate)
+
+- (void)representerTextView:(HFRepresenterTextView *)sender menu:(NSMenu *)menu forEvent:(NSEvent *)event atPosition:(NSUInteger)position;
 
 @end
+#endif
+
+NS_ASSUME_NONNULL_END

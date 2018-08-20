@@ -5,28 +5,49 @@
 //  Copyright 2007 ridiculous_fish. All rights reserved.
 //
 
-#import <HexFiend/HFTextRepresenter_Internal.h>
+#import "HFTextRepresenter_Internal.h"
 #import <HexFiend/HFRepresenterTextView.h>
+#if !TARGET_OS_IPHONE
 #import <HexFiend/HFPasteboardOwner.h>
+#endif
 #import <HexFiend/HFByteArray.h>
 #import <HexFiend/HFByteRangeAttributeArray.h>
-#import <HexFiend/HFTextVisualStyleRun.h>
+#import "HFTextVisualStyleRun.h"
 #import <HexFiend/HFByteRangeAttribute.h>
+#import "HFColorRange.h"
 
-@implementation HFTextRepresenter
+@implementation HFTextRepresenter {
+    NSUInteger _clickedLocation;
+}
 
 - (Class)_textViewClass {
     UNIMPLEMENTED();
 }
 
-- (instancetype)init {
-    self = [super init];
-    
++ (NSArray<HFColor *> *)defaultRowBackgroundColors {
+#if TARGET_OS_IPHONE
+    UIColor *color1 = [UIColor colorWithWhite:1.0 alpha:1.0];
+    UIColor *color2 = [UIColor colorWithRed:.87 green:.89 blue:1. alpha:1.];
+#else
+    if (@available(macOS 10.14, *)) {
+        if (HFDarkModeEnabled()) {
+            return [NSColor alternatingContentBackgroundColors];
+        }
+    }
     NSColor *color1 = [NSColor colorWithCalibratedWhite:1.0 alpha:1.0];
     NSColor *color2 = [NSColor colorWithCalibratedRed:.87 green:.89 blue:1. alpha:1.];
-    _rowBackgroundColors = @[color1, color2];
-    
-    return self;
+#endif
+    return @[color1, color2];
+}
+
+- (NSArray<HFColor *> *)rowBackgroundColors {
+    // If set use the customized value, otherwise return the default.
+    // This must be dynamic and not stored so we can update live on redraw
+    // when the appearance changes.
+    if (_rowBackgroundColors) {
+        return _rowBackgroundColors;
+    }
+    return [[self class] defaultRowBackgroundColors];
 }
 
 - (void)dealloc {
@@ -50,9 +71,11 @@
     return self;
 }
 
-- (NSView *)createView {
+- (HFView *)createView {
     HFRepresenterTextView *view = [[[self _textViewClass] alloc] initWithRepresenter:self];
+#if !TARGET_OS_IPHONE
     [view setAutoresizingMask:NSViewHeightSizable];
+#endif
     return view;
 }
 
@@ -82,11 +105,11 @@
     }
 }
 
-- (NSRect)furthestRectOnEdge:(NSRectEdge)edge forByteRange:(HFRange)byteRange {
+- (CGRect)furthestRectOnEdge:(CGRectEdge)edge forByteRange:(HFRange)byteRange {
     HFASSERT(byteRange.length > 0);
     HFRange displayedRange = [self entireDisplayedRange];
     HFRange intersection = HFIntersectionRange(displayedRange, byteRange);
-    NSRect result = NSZeroRect;
+    CGRect result = CGRectZero;
     if (intersection.length > 0) {
         NSRange intersectionNSRange = NSMakeRange(ll2l(intersection.location - displayedRange.location), ll2l(intersection.length));
         if (intersectionNSRange.length > 0) {
@@ -95,11 +118,11 @@
     }
     else if (byteRange.location < displayedRange.location) {
         /* We're below it. */
-        return NSMakeRect(-CGFLOAT_MAX, -CGFLOAT_MAX, 0, 0);
+        return CGRectMake(-CGFLOAT_MAX, -CGFLOAT_MAX, 0, 0);
     }
     else if (byteRange.location >= HFMaxRange(displayedRange)) {
         /* We're above it */
-        return NSMakeRect(CGFLOAT_MAX, CGFLOAT_MAX, 0, 0);
+        return CGRectMake(CGFLOAT_MAX, CGFLOAT_MAX, 0, 0);
     }
     else {
         /* Shouldn't be possible to get here */
@@ -108,18 +131,18 @@
     return result;
 }
 
-- (NSPoint)locationOfCharacterAtByteIndex:(unsigned long long)index {
-    NSPoint result;
+- (CGPoint)locationOfCharacterAtByteIndex:(unsigned long long)index {
+    CGPoint result;
     HFRange displayedRange = [self entireDisplayedRange];
     if (HFLocationInRange(index, displayedRange) || index == HFMaxRange(displayedRange)) {
         NSUInteger location = ll2l(index - displayedRange.location);
         result = [[self view] originForCharacterAtByteIndex:location];
     }
     else if (index < displayedRange.location) {
-        result = NSMakePoint(-CGFLOAT_MAX, -CGFLOAT_MAX);
+        result = CGPointMake(-CGFLOAT_MAX, -CGFLOAT_MAX);
     }
     else {
-        result = NSMakePoint(CGFLOAT_MAX, CGFLOAT_MAX);
+        result = CGPointMake(CGFLOAT_MAX, CGFLOAT_MAX);
     }
     return result;
 }
@@ -128,32 +151,38 @@
     HFTextVisualStyleRun *run = [[HFTextVisualStyleRun alloc] init];
     [run setRange:range];
     if ([attributes containsObject:kHFAttributeMagic]) {
-        [run setForegroundColor:[NSColor blueColor]];
-        [run setBackgroundColor:[NSColor orangeColor]];
+        [run setForegroundColor:[HFColor blueColor]];
+        [run setBackgroundColor:[HFColor orangeColor]];
     }
     else {
-        [run setForegroundColor:[NSColor blackColor]];
+        HFColor *foregroundColor = [HFColor blackColor];
+#if !TARGET_OS_IPHONE
+        if (@available(macOS 10.10, *)) {
+            foregroundColor = [NSColor labelColor];
+        }
+#endif
+        [run setForegroundColor:foregroundColor];
     }
     if ([attributes containsObject:kHFAttributeUnmapped]) {
         [run setShouldDraw:NO];
     }
     if ([attributes containsObject:kHFAttributeUnreadable]) {
-        [run setBackgroundColor:[NSColor colorWithCalibratedWhite:.5 alpha:.5]];
+        [run setBackgroundColor:HFColorWithWhite(.5, .5)];
     }
     else if ([attributes containsObject:kHFAttributeWritable]) {
-        [run setBackgroundColor:[NSColor colorWithCalibratedRed:.5 green:1. blue:.5 alpha:.5]];
+        [run setBackgroundColor:HFColorWithRGB(.5, 1., .5, .5)];
     }
     else if ([attributes containsObject:kHFAttributeExecutable]) {
-        [run setBackgroundColor:[NSColor colorWithCalibratedRed:1. green:.5 blue:0. alpha:.5]];
+        [run setBackgroundColor:HFColorWithRGB(1., .5, 0., .5)];
     }
     if ([attributes containsObject:kHFAttributeFocused]) {
-        [run setBackgroundColor:[NSColor colorWithCalibratedRed:(CGFloat)128/255. green:(CGFloat)0/255. blue:0/255. alpha:1.]];
+        [run setBackgroundColor:HFColorWithRGB((CGFloat)128/255., (CGFloat)0/255., 0/255., 1.)];
         [run setScale:1.15];
-        [run setForegroundColor:[NSColor whiteColor]];
+        [run setForegroundColor:[HFColor whiteColor]];
     }
     else if ([attributes containsObject:kHFAttributeDiffInsertion]) {
         CGFloat white = 180;
-        [run setBackgroundColor:[NSColor colorWithCalibratedRed:(CGFloat)255./255. green:(CGFloat)white/255. blue:white/255. alpha:.7]];
+        [run setBackgroundColor:HFColorWithRGB((CGFloat)255./255., (CGFloat)white/255., white/255., .7)];
     }
     
     /* Process bookmarks */
@@ -214,13 +243,17 @@
         [self updateText];
     }
     else {
+#if !TARGET_OS_IPHONE
         [view setFont:[NSFont fontWithName:HFDEFAULT_FONT size:HFDEFAULT_FONTSIZE]];
+#endif
     }
 }
 
+#if !TARGET_OS_IPHONE
 - (void)scrollWheel:(NSEvent *)event {
     [[self controller] scrollWithScrollEvent:event];
 }
+#endif
 
 - (void)selectAll:(id)sender {
     [[self controller] selectAll:sender];
@@ -265,6 +298,14 @@
             [[self view] setByteColoring:NULL];
         }
     }
+    if (bits & (HFControllerColorRanges)) {
+        [[self view] updateSelectedRanges];
+#if TARGET_OS_IPHONE
+        [[self view] setNeedsDisplay];
+#else
+        [[self view] setNeedsDisplay:YES];
+#endif
+    }
     [super controllerDidChange:bits];
 }
 
@@ -288,41 +329,59 @@
 
 - (NSArray *)displayedSelectedContentsRanges {
     HFController *controller = [self controller];
-    NSArray *result;
     NSArray *selectedRanges = [controller selectedContentsRanges];
-    HFRange displayedRange = [self entireDisplayedRange];
-    
+    return [self displayedRanges:selectedRanges];
+}
+
+- (NSArray<NSDictionary*> *)displayedColorRanges {
+    NSMutableArray<NSDictionary*> *a = [NSMutableArray array];
+    [self.controller.colorRanges enumerateObjectsUsingBlock:^(HFColorRange *obj, NSUInteger idx __unused, BOOL *stop __unused) {
+        if (!obj.color) {
+            return;
+        }
+        HFRangeWrapper *wrapper = obj.range;
+        NSArray *displayed = [self displayedRanges:@[wrapper]];
+        if (displayed.count > 0) {
+            [a addObject:@{@"color" : obj.color, @"range" : displayed.firstObject}];
+        }
+    }];
+    return a;
+}
+
+- (NSArray<NSValue*> *)displayedRanges:(NSArray *)ranges
+{
+    const HFRange displayedRange = [self entireDisplayedRange];
     HFASSERT(displayedRange.length <= NSUIntegerMax);
-    NEW_OBJ_ARRAY(NSValue *, clippedSelectedRanges, [selectedRanges count]);
+    NEW_OBJ_ARRAY(NSValue *, clippedRanges, [ranges count]);
     NSUInteger clippedRangeIndex = 0;
-    for(HFRangeWrapper * wrapper in selectedRanges) {
-        HFRange selectedRange = [wrapper HFRange];
+    for(HFRangeWrapper * wrapper in ranges) {
+        const HFRange range = [wrapper HFRange];
         BOOL clippedRangeIsVisible;
-        NSRange clippedSelectedRange;
+        NSRange clippedRange;
         /* Necessary because zero length ranges do not intersect anything */
-        if (selectedRange.length == 0) {
+        if (range.length == 0) {
             /* Remember that {6, 0} is considered a subrange of {3, 3} */
-            clippedRangeIsVisible = HFRangeIsSubrangeOfRange(selectedRange, displayedRange);
+            clippedRangeIsVisible = HFRangeIsSubrangeOfRange(range, displayedRange);
             if (clippedRangeIsVisible) {
-                HFASSERT(selectedRange.location >= displayedRange.location);
-                clippedSelectedRange.location = ll2l(selectedRange.location - displayedRange.location);
-                clippedSelectedRange.length = 0;
+                HFASSERT(range.location >= displayedRange.location);
+                clippedRange.location = ll2l(range.location - displayedRange.location);
+                clippedRange.length = 0;
             }
         }
         else {
             // selectedRange.length > 0
-            clippedRangeIsVisible = HFIntersectsRange(selectedRange, displayedRange);
+            clippedRangeIsVisible = HFIntersectsRange(range, displayedRange);
             if (clippedRangeIsVisible) {
-                HFRange intersectionRange = HFIntersectionRange(selectedRange, displayedRange);
+                HFRange intersectionRange = HFIntersectionRange(range, displayedRange);
                 HFASSERT(intersectionRange.location >= displayedRange.location);
-                clippedSelectedRange.location = ll2l(intersectionRange.location - displayedRange.location);
-                clippedSelectedRange.length = ll2l(intersectionRange.length);
+                clippedRange.location = ll2l(intersectionRange.location - displayedRange.location);
+                clippedRange.length = ll2l(intersectionRange.length);
             }
         }
-        if (clippedRangeIsVisible) clippedSelectedRanges[clippedRangeIndex++] = [NSValue valueWithRange:clippedSelectedRange];
+        if (clippedRangeIsVisible) clippedRanges[clippedRangeIndex++] = [NSValue valueWithRange:clippedRange];
     }
-    result = [NSArray arrayWithObjects:clippedSelectedRanges count:clippedRangeIndex];
-    FREE_OBJ_ARRAY(clippedSelectedRanges, [selectedRanges count]);
+    NSArray *result = [NSArray arrayWithObjects:clippedRanges count:clippedRangeIndex];
+    FREE_OBJ_ARRAY(clippedRanges, [ranges count]);
     return result;
 }
 
@@ -366,6 +425,7 @@
     return byteIndex;
 }
 
+#if !TARGET_OS_IPHONE
 - (void)beginSelectionWithEvent:(NSEvent *)event forCharacterIndex:(NSUInteger)characterIndex {
     [[self controller] beginSelectionWithEvent:event forByteIndex:[self byteIndexForCharacterIndex:characterIndex]];
 }
@@ -377,12 +437,14 @@
 - (void)endSelectionWithEvent:(NSEvent *)event forCharacterIndex:(NSUInteger)characterIndex {
     [[self controller] endSelectionWithEvent:event forByteIndex:[self byteIndexForCharacterIndex:characterIndex]];
 }
+#endif
 
 - (void)insertText:(NSString *)text {
     USE(text);
     UNIMPLEMENTED_VOID();
 }
 
+#if !TARGET_OS_IPHONE
 - (void)copySelectedBytesToPasteboard:(NSPasteboard *)pb {
     USE(pb);
     UNIMPLEMENTED_VOID();
@@ -442,4 +504,85 @@
     return result;
 }
 
+- (void)representerTextView:(HFRepresenterTextView * __unused)sender menu:(NSMenu *)menu forEvent:(NSEvent * __unused)event atPosition:(NSUInteger)position {
+    BOOL add = YES;
+    for (NSInteger i = 0; i < menu.numberOfItems; i++) {
+        NSMenuItem *item = [menu itemAtIndex:i];
+        if (item.action == @selector(highlightSelection:)) {
+            add = NO;
+            break;
+        }
+    }
+    if (!add) {
+        return;
+    }
+    if (menu.numberOfItems > 0) {
+        [menu addItem:[NSMenuItem separatorItem]];
+    }
+    NSMenuItem *menuItem;
+    menuItem = [[NSMenuItem alloc] initWithTitle:NSLocalizedString(@"Highlight Selection", nil) action:@selector(highlightSelection:) keyEquivalent:@""];
+    menuItem.target = self;
+    NSArray *ranges = self.controller.selectedContentsRanges;
+    _clickedLocation = position;
+    BOOL clickedOnColorRange = NO;
+    for (HFColorRange *colorRange in self.controller.colorRanges) {
+        if (HFLocationInRange(_clickedLocation, colorRange.range.HFRange)) {
+            clickedOnColorRange = YES;
+            break;
+        }
+    }
+    BOOL canHighlightSelection = ranges.count > 0 && [(HFRangeWrapper *)ranges[0] HFRange].length > 0;
+    menuItem.enabled = canHighlightSelection;
+    [menu addItem:menuItem];
+    menuItem = [[NSMenuItem alloc] initWithTitle:NSLocalizedString(@"Remove Highlight", nil) action:@selector(removeHighlight:) keyEquivalent:@""];
+    menuItem.target = self;
+    menuItem.enabled = clickedOnColorRange;
+    [menu addItem:menuItem];
+    menuItem = [[NSMenuItem alloc] initWithTitle:NSLocalizedString(@"Remove All Highlights", nil) action:@selector(removeAllHighlights:) keyEquivalent:@""];
+    menuItem.target = self;
+    menuItem.enabled = self.controller.colorRanges.count > 0;
+    [menu addItem:menuItem];
+}
+#endif
+
+- (void)highlightSelection:(id __unused)sender {
+    HFColorRange *range = [[HFColorRange alloc] init];
+    range.range = self.controller.selectedContentsRanges[0];
+    [self.controller.colorRanges addObject:range];
+#if !TARGET_OS_IPHONE
+    NSColorPanel *panel = [NSColorPanel sharedColorPanel];
+    id windowObserver = [[NSNotificationCenter defaultCenter] addObserverForName:NSWindowWillCloseNotification object:panel queue:nil usingBlock:^(NSNotification *note __unused) {
+        [NSApp stopModal];
+    }];
+    id colorObserver = [[NSNotificationCenter defaultCenter] addObserverForName:NSColorPanelColorDidChangeNotification object:panel queue:nil usingBlock:^(NSNotification * __unused note) {
+        range.color = panel.color;
+        [self.controller colorRangesDidChange];
+    }];
+    panel.continuous = YES;
+    (void)[NSApp runModalForWindow:panel];
+    [[NSNotificationCenter defaultCenter] removeObserver:colorObserver];
+    [[NSNotificationCenter defaultCenter] removeObserver:windowObserver];
+#endif
+}
+
+- (void)removeHighlight:(id __unused)sender {
+    NSEnumerator *enumerator = [self.controller.colorRanges reverseObjectEnumerator];
+    HFColorRange *colorRangeToRemove = nil;
+    for (HFColorRange *colorRange in enumerator) {
+        if (HFLocationInRange(_clickedLocation, colorRange.range.HFRange)) {
+            colorRangeToRemove = colorRange;
+            break;
+        }
+    }
+    if (colorRangeToRemove) {
+        [self.controller.colorRanges removeObject:colorRangeToRemove];
+        [self.controller colorRangesDidChange];
+    }
+}
+
+- (void)removeAllHighlights:(id __unused)sender {
+    [self.controller.colorRanges removeAllObjects];
+}
+
 @end
+

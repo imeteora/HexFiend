@@ -50,7 +50,7 @@ static void addEncoding(NSString *name, CFStringEncoding value, NSMutableArray<H
     if ([usedEncodings containsObject:@(cocoaEncoding)]) {
         return;
     }
-    NSString *strippedName, *localizedName, *title;
+    NSString *strippedName, *localizedName;
     
     /* Strip off the common prefix */
     if ([name hasPrefix:@"kCFStringEncoding"]) {
@@ -62,13 +62,6 @@ static void addEncoding(NSString *name, CFStringEncoding value, NSMutableArray<H
     /* Get the localized encoding name */
     localizedName = [NSString localizedNameOfStringEncoding:cocoaEncoding];
     
-    /* Compute the title.  \u2014 is an em-dash. */
-    if ([localizedName length] > 0) {
-        title = [NSString stringWithFormat:@"%@ \u2014 %@", strippedName, localizedName];
-    } else {
-        title = strippedName;
-    }
-
     HFEncodingChoice *encoding = [[HFEncodingChoice alloc] init];
     encoding.label = localizedName.length > 0 ? localizedName : strippedName;
     encoding.encoding = cocoaEncoding;
@@ -259,11 +252,11 @@ static void addEncoding(NSString *name, CFStringEncoding value, NSMutableArray<H
     }
     /* Tell the front document (if any) and the app delegate */
     NSStringEncoding encodingValue = activeEncodings[row].encoding;
-    id document = [[NSDocumentController sharedDocumentController] currentDocument];
-    if ([document respondsToSelector:@selector(setStringEncoding:)]) {
-        [document setStringEncoding:encodingValue];
-    }
-    [(AppDelegate*)[NSApp delegate] setStringEncoding:encodingValue];
+    BaseDataDocument *document = [[NSDocumentController sharedDocumentController] currentDocument];
+    HFASSERT([document isKindOfClass:[BaseDataDocument class]]);
+    HFStringEncoding *encoding = [[HFNSStringEncoding alloc] initWithEncoding:encodingValue];
+    [document setStringEncoding:encoding];
+    [(AppDelegate*)[NSApp delegate] setStringEncoding:encoding];
 }
 
 - (void)controlTextDidChange:(NSNotification * __unused)obj

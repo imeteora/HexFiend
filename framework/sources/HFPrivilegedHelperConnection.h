@@ -5,9 +5,9 @@
 //  Copyright 2009 __MyCompanyName__. All rights reserved.
 //
 
-#import <Cocoa/Cocoa.h>
 #import "FortunateSonIPCTypes.h"
 
+NS_ASSUME_NONNULL_BEGIN
 
 struct HFProcessInfo_t {
     unsigned char bits; //either 32 or 64
@@ -31,3 +31,5 @@ struct HFProcessInfo_t {
 - (BOOL)openFileAtPath:(const char *)path writable:(BOOL)writable fileDescriptor:(int *)outFD error:(NSError **)error;
 
 @end
+
+NS_ASSUME_NONNULL_END

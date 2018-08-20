@@ -10,11 +10,16 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <unistd.h>
+#if ! HF_NO_PRIVILEGED_FILE_OPERATIONS
 #include <sys/disk.h>
+#endif
 
-#ifndef HF_NO_PRIVILEGED_FILE_OPERATIONS
+#if ! HF_NO_PRIVILEGED_FILE_OPERATIONS
 #import "HFPrivilegedHelperConnection.h"
 #endif
+
+@interface HFConcreteFileReference : HFFileReference
+@end
 
 /* The return code is just to quiet the static analyzer */
 static BOOL returnReadError(NSError **error) {
@@ -106,7 +111,18 @@ static BOOL returnFTruncateError(NSError **error) {
     return YES;
 }
 
-@implementation HFFileReference
+@implementation HFFileReference {
+@protected
+    int fileDescriptor;
+    dev_t device;
+    unsigned long long inode;
+    unsigned long long fileLength;
+    mode_t fileMode;
+    BOOL isWritable;
+    uint32_t blockSize;
+    BOOL isPrivileged;
+    BOOL isFixedLength;
+}
 
 @synthesize isPrivileged, isFixedLength;
 
@@ -132,7 +148,7 @@ static BOOL returnFTruncateError(NSError **error) {
     return ref->device == device && ref->inode == inode;
 }
 
-+ (id)allocWithZone:(NSZone *)zone {
++ (instancetype)allocWithZone:(NSZone *)zone {
     if (self == [HFFileReference class]) {
         /* Default to HFConcreteFileReference */
         return [HFConcreteFileReference allocWithZone:zone];
@@ -193,7 +209,7 @@ static BOOL returnFTruncateError(NSError **error) {
         fileDescriptor = open(p, O_RDONLY, 0);
     }
 
-#ifndef HF_NO_PRIVILEGED_FILE_OPERATIONS
+#if ! HF_NO_PRIVILEGED_FILE_OPERATIONS
 	if (fileDescriptor < 0 && errno == EACCES) {
 		if ([[HFPrivilegedHelperConnection sharedConnection] openFileAtPath:p writable:isWritable fileDescriptor:&fileDescriptor error:error]) {
             isPrivileged = YES;
@@ -219,6 +235,7 @@ static BOOL returnFTruncateError(NSError **error) {
         return NO;
     }
 
+#if ! HF_NO_PRIVILEGED_FILE_OPERATIONS
     if (!sb.st_size && (S_ISCHR(sb.st_mode) || S_ISBLK(sb.st_mode))) {
         uint64_t blockCount;
 
@@ -234,8 +251,11 @@ static BOOL returnFTruncateError(NSError **error) {
         isFixedLength = YES;
     }
     else {
+#endif
         fileLength = sb.st_size;
+#if ! HF_NO_PRIVILEGED_FILE_OPERATIONS
     }
+#endif
 
     fileMode = sb.st_mode;
     inode = sb.st_ino;

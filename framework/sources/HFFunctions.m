@@ -1,5 +1,4 @@
 #import <HexFiend/HFFunctions.h>
-#import <HexFiend/HFController.h>
 
 #import "HFFunctions_Private.h"
 
@@ -895,6 +894,7 @@ static CGFloat interpolateShadow(CGFloat val) {
     return (CGFloat)(expm1(val * scale) / expm1(scale));
 }
 
+#if !TARGET_OS_IPHONE
 void HFDrawShadow(CGContextRef ctx, NSRect rect, CGFloat shadowSize, NSRectEdge rectEdge, BOOL drawActive, NSRect clip) {
     NSRect remainingRect, unused;
     NSDivideRect(rect, &remainingRect, &unused, shadowSize, rectEdge);
@@ -940,4 +940,60 @@ void HFUnregisterViewForWindowAppearanceChanges(NSView *self, BOOL appToo) {
         [center removeObserver:self name:NSApplicationDidBecomeActiveNotification object:nil];
         [center removeObserver:self name:NSApplicationDidResignActiveNotification object:nil];
     }    
+}
+#endif
+
+BOOL HFDarkModeEnabled(void) {
+#if TARGET_OS_IPHONE
+    return NO;
+#else
+#if defined(MAC_OS_X_VERSION_10_4) && MAC_OS_X_VERSION_10_4 > 0 && MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_4
+    if (@available(macOS 10.14, *)) {
+        if ([NSAppearance.currentAppearance.name isEqualToString:NSAppearanceNameDarkAqua]) {
+            return YES;
+        }
+    }
+#else
+// Dark Mode requires compiling against 10.14+ SDK
+#warning Compiling without Dark Mode support.
+#endif
+    return NO;
+#endif
+}
+
+CGContextRef HFGraphicsGetCurrentContext(void) {
+    CGContextRef ctx;
+#if TARGET_OS_IPHONE
+    ctx = UIGraphicsGetCurrentContext();
+#else
+#if MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_X_VERSION_10_10
+    if (@available(macOS 10.10, *)) {
+        ctx = [NSGraphicsContext currentContext].CGContext;
+    } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        ctx = [NSGraphicsContext currentContext].graphicsPort;
+#pragma clang diagnostic pop
+    }
+#else
+    ctx = [NSGraphicsContext currentContext].CGContext;
+#endif
+#endif
+    return ctx;
+}
+
+HFColor* HFColorWithWhite(CGFloat white, CGFloat alpha) {
+#if TARGET_OS_IPHONE
+    return [UIColor colorWithWhite:white alpha:alpha];
+#else
+    return [NSColor colorWithCalibratedWhite:white alpha:alpha];
+#endif
+}
+
+HFColor* HFColorWithRGB(CGFloat red, CGFloat green, CGFloat blue, CGFloat alpha) {
+#if TARGET_OS_IPHONE
+    return [UIColor colorWithRed:red green:green blue:blue alpha:alpha];
+#else
+    return [NSColor colorWithCalibratedRed:red green:green blue:blue alpha:alpha];
+#endif
 }

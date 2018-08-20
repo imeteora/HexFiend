@@ -5,11 +5,11 @@
 //  Copyright 2008 ridiculous_fish. All rights reserved.
 //
 
-#import <HexFiend/HFByteSliceFileOperation.h>
+#import "HFByteSliceFileOperation.h"
 #import <HexFiend/HFByteSlice.h>
 #import <HexFiend/HFProgressTracker.h>
 #import <HexFiend/HFFileReference.h>
-#import <HexFiend/HFByteSliceFileOperationQueueEntry.h>
+#import "HFByteSliceFileOperationQueueEntry.h"
 #include <malloc/malloc.h>
 
 enum {
@@ -427,19 +427,19 @@ bail:;
 
 @implementation HFByteSliceFileOperation
 
-+ (id)identityOperationWithByteSlice:(HFByteSlice *)slice targetRange:(HFRange)range {
++ (instancetype)identityOperationWithByteSlice:(HFByteSlice *)slice targetRange:(HFRange)range {
     return [[HFByteSliceFileOperationIdentity alloc] initWithByteSlice:slice targetRange:range];
 }
 
-+ (id)externalOperationWithByteSlice:(HFByteSlice *)slice targetRange:(HFRange)range {
++ (instancetype)externalOperationWithByteSlice:(HFByteSlice *)slice targetRange:(HFRange)range {
     return [[HFByteSliceFileOperationExternal alloc] initWithByteSlice:slice targetRange:range];
 }
 
-+ (id)internalOperationWithByteSlice:(HFByteSlice *)slice sourceRange:(HFRange)source targetRange:(HFRange)target {
++ (instancetype)internalOperationWithByteSlice:(HFByteSlice *)slice sourceRange:(HFRange)source targetRange:(HFRange)target {
     return [[HFByteSliceFileOperationInternal alloc] initWithByteSlice:slice sourceRange:source targetRange:target];
 }
 
-+ (id)chainedOperationWithInternalOperations:(NSArray *)internalOperations {
++ (instancetype)chainedOperationWithInternalOperations:(NSArray *)internalOperations {
     return [[HFByteSliceFileOperationChained alloc] initWithInternalOperations:internalOperations];
 }
 

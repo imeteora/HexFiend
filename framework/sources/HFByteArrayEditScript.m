@@ -8,7 +8,7 @@
 #import <HexFiend/HFByteArrayEditScript.h>
 #import <HexFiend/HFByteArray.h>
 #import <HexFiend/HFProgressTracker.h>
-#import <HexFiend/HFByteArray_Internal.h>
+#import "HFByteArray_Internal.h"
 #include <malloc/malloc.h>
 #include <libkern/OSAtomic.h>
 #include <pthread.h>
@@ -1323,11 +1323,10 @@ static inline enum HFEditInstructionType HFByteArrayInstructionType(struct HFEdi
     
     /* Wait until we're done */
     dispatch_group_wait(dispatchGroup, DISPATCH_TIME_FOREVER);
-    dispatch_release(dispatchGroup);
+    dispatchGroup = NULL;
     
     /* Make sure our insnQueue is done by submitting a no-op to it, then clear it */
     dispatch_sync(insnQueue, ^{});
-    dispatch_release(insnQueue);
     insnQueue = NULL;
     
     if (! *cancelRequested) {

@@ -73,11 +73,11 @@
 
 - (void)updateTextFieldStringEncodingFromDocumentNotification:(id)unused {
     USE(unused);
-    NSStringEncoding encoding;
+    HFStringEncoding *encoding;
     if (document) {
         encoding = [document stringEncoding];
     } else {
-        encoding = [NSString defaultCStringEncoding];
+        encoding = [HFNSStringEncoding ascii];
     }
     [findField setStringEncoding:encoding];
     [replaceField setStringEncoding:encoding];
